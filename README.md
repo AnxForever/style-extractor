@@ -1,6 +1,6 @@
-# style-extractor（中文）
+# style-extractor
 
-这是一个用于“网站风格 + 动效”**证据提取**的 Codex Skill：从真实网页中提取颜色/字体/间距/组件/状态矩阵，并在网站存在动态效果时，补全运行时动效证据（timing、easing、keyframes、delay chain、JS 驱动动效线索）。输出为风格指南（Markdown），可选生成 HTML 原型。
+这是一个用于“网站风格 + 动效”**证据提取**的 Skill：从真实网页中提取颜色/字体/间距/组件/状态矩阵，并在网站存在动态效果时，补全运行时动效证据（timing、easing、keyframes、delay chain、JS 驱动动效线索）。输出为风格指南（Markdown），可选生成 HTML 原型。
 
 ## 依赖
 
@@ -13,30 +13,25 @@
 
 ### 1) 安装 Chrome DevTools MCP（`chrome-devtools-mcp`）
 
+具体教程不列出
 
 ### 2) 安装本 Skill
 
 1. 直接从仓库下载 zip（压缩包）
-2. 解压并放到 Codex skills 目录（推荐 `public`）下，例如：
+2. 解压并放到 Codex skills(claude code同理) 目录（推荐 `public`）下，例如：
    - `C:\\Users\\<You>\\.codex\\skills\\public\\style-extractor\\`
 3. 确认该目录下能看到 `SKILL.md`、`references/`、`scripts/`
 
-## 使用（最短路径）
+## 使用
 
-### 0) 约束：输出目录固定
+### 1 在 Codex(cc) 里这样下指令
 
-所有生成物必须写到：`%USERPROFILE%\\style-extractor\\`（不要写进 skill 目录）。
-
-### 1) 在 Codex 里这样下指令
-
-把下面这段当作模板改 URL/项目名即可：
-
-> 使用 `style-extractor` 这个 skill。目标网站：`<URL>`。项目名：`<project>`，风格名：`<variant>`。  
-> 先用 chrome-devtools-mcp 打开页面并收集证据（截图 + computed styles + 网络里的 CSS/JS）。  
-> 如果页面有明显动效，必须用 `document.getAnimations({subtree:true})` 抓运行时动效证据，并给出关键交互的 keyframes / duration / delay / easing / fill，以及可能的 delay chain。  
-> 最终输出：`%USERPROFILE%\\style-extractor\\<project>-<variant>-style.md`，并把证据（截图/CSS/JS/动效抓取结果）放到同名 `-evidence\\` 目录。
+"帮我提取xx(网页链接)的风格"。
+如果没有反应，可以尝试指定style-extractor这个skill名，客户端便会自己开始心动
 
 （提示：`chrome-devtools-mcp` 通常会在首次调用需要浏览器的工具时自动启动/连接 Chrome。）
+
+生成的内容就会在"C:\\Users\\<You>\\style-extractor"这个目录下。
 
 ## 参考与质量基准
 
