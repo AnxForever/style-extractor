@@ -432,6 +432,33 @@
   // Interactive State Capture (requires user interaction)
   // ============================================
 
+  // Extract pseudo-class styles from stylesheets (safe, no side effects)
+  function extractPseudoStyles(el, pseudoClass) {
+    const styles = {};
+    for (const sheet of document.styleSheets) {
+      try {
+        const rules = sheet.cssRules || sheet.rules;
+        for (const rule of rules) {
+          if (rule.type !== 1) continue;
+          const selectorText = rule.selectorText || '';
+          if (selectorText.includes(pseudoClass)) {
+            const baseSelector = selectorText.replace(new RegExp(pseudoClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
+            try {
+              if (el.matches(baseSelector)) {
+                for (const prop of STYLE_PROPERTIES) {
+                  const kebab = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                  const value = rule.style.getPropertyValue(kebab);
+                  if (value) styles[prop] = value;
+                }
+              }
+            } catch { }
+          }
+        }
+      } catch { }
+    }
+    return styles;
+  }
+
   async function captureInteractiveStates(selector, options = {}) {
     const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
     if (!el) return { ok: false, reason: 'Element not found' };
@@ -473,12 +500,14 @@
       el.blur();
     }
 
-    // Capture active state (harder - need to hold mousedown)
+    // Capture active state using CSS class simulation instead of real events
+    // This avoids triggering form submissions or navigation
     if (options.captureActive !== false) {
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      await new Promise(r => setTimeout(r, 50));
-      states.active = extractStyles(el);
-      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      // Try to extract :active styles from stylesheets instead of dispatching events
+      const activeStyles = extractPseudoStyles(el, ':active');
+      if (activeStyles && Object.keys(activeStyles).length > 0) {
+        states.active = { ...states.default, ...activeStyles };
+      }
     }
 
     return {
