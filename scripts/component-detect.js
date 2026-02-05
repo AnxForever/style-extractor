@@ -12,6 +12,14 @@
 (() => {
   if (window.__seComponents?.installed) return;
 
+  // Debug mode - set window.__seDebug = true to enable logging
+  const debug = (...args) => {
+    if (window.__seDebug) console.log('[style-extractor:components]', ...args);
+  };
+  const debugWarn = (...args) => {
+    if (window.__seDebug) console.warn('[style-extractor:components]', ...args);
+  };
+
   // ============================================
   // Component Pattern Definitions
   // ============================================
@@ -232,7 +240,9 @@
     for (const selector of pattern.selectors) {
       try {
         if (el.matches(selector)) return true;
-      } catch { }
+      } catch (e) {
+        debugWarn('Invalid selector:', selector, e.message);
+      }
     }
 
     // Check class indicators
@@ -314,7 +324,9 @@
             styles: extractStyles(el)
           });
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Error detecting components with selector:', selector, e.message);
+      }
     }
 
     return results;
@@ -395,7 +407,9 @@
             matchingRules.disabled.push(rule);
           }
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Cannot access stylesheet for state extraction (likely cross-origin):', sheet.href);
+      }
     }
 
     // Extract styles from matching rules
@@ -451,10 +465,14 @@
                   if (value) styles[prop] = value;
                 }
               }
-            } catch { }
+            } catch (e) {
+              debugWarn('Error matching selector:', baseSelector, e.message);
+            }
           }
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Cannot access stylesheet for pseudo-styles (likely cross-origin):', sheet.href);
+      }
     }
     return styles;
   }

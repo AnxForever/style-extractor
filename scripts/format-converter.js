@@ -33,6 +33,17 @@
       .toLowerCase();
   }
 
+  // Sanitize string for use as CSS variable name
+  function toCSSVarName(str) {
+    if (!str) return 'unknown';
+    return String(str)
+      .toLowerCase()
+      .replace(/([a-z])([A-Z])/g, '$1-$2')  // camelCase to kebab
+      .replace(/[^a-z0-9-]/g, '-')           // remove invalid chars
+      .replace(/-+/g, '-')                   // collapse multiple dashes
+      .replace(/^-|-$/g, '');                // trim leading/trailing dashes
+  }
+
   function toCamelCase(str) {
     return str.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   }
@@ -275,20 +286,29 @@
   // ============================================
 
   function toCSSVars(styleData) {
+    // Input validation
+    if (!styleData || typeof styleData !== 'object') {
+      console.warn('[style-extractor] toCSSVars: invalid input');
+      return ':root {\n  /* No valid style data */\n}';
+    }
+
     const vars = [];
     vars.push(':root {');
 
     // Colors
-    if (styleData.colors) {
+    if (styleData.colors && typeof styleData.colors === 'object') {
       vars.push('  /* Colors */');
       for (const [name, value] of Object.entries(styleData.colors)) {
-        vars.push(`  --color-${toKebabCase(name)}: ${parseColor(value)};`);
+        const safeName = toCSSVarName(name);
+        if (safeName && value) {
+          vars.push(`  --color-${safeName}: ${parseColor(value)};`);
+        }
       }
       vars.push('');
     }
 
     // Typography
-    if (styleData.typography?.families) {
+    if (styleData.typography?.families && Array.isArray(styleData.typography.families)) {
       vars.push('  /* Typography */');
       styleData.typography.families.forEach((family, i) => {
         vars.push(`  --font-family-${i === 0 ? 'primary' : i === 1 ? 'secondary' : `f${i}`}: ${family};`);
@@ -296,19 +316,25 @@
       vars.push('');
     }
 
-    if (styleData.typography?.scale) {
+    if (styleData.typography?.scale && typeof styleData.typography.scale === 'object') {
       vars.push('  /* Font Sizes */');
       for (const [name, value] of Object.entries(styleData.typography.scale)) {
-        vars.push(`  --font-size-${toKebabCase(name)}: ${value};`);
+        const safeName = toCSSVarName(name);
+        if (safeName && value) {
+          vars.push(`  --font-size-${safeName}: ${value};`);
+        }
       }
       vars.push('');
     }
 
     // Spacing
-    if (styleData.spacing) {
+    if (styleData.spacing && typeof styleData.spacing === 'object') {
       vars.push('  /* Spacing */');
       for (const [name, value] of Object.entries(styleData.spacing)) {
-        vars.push(`  --space-${toKebabCase(name)}: ${value};`);
+        const safeName = toCSSVarName(name);
+        if (safeName && value) {
+          vars.push(`  --space-${safeName}: ${value};`);
+        }
       }
       vars.push('');
     }

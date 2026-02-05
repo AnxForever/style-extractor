@@ -16,6 +16,14 @@
 (() => {
   if (window.__seStyleKit?.installed) return;
 
+  // Debug mode - set window.__seDebug = true to enable logging
+  const debug = (...args) => {
+    if (window.__seDebug) console.log('[style-extractor]', ...args);
+  };
+  const debugWarn = (...args) => {
+    if (window.__seDebug) console.warn('[style-extractor]', ...args);
+  };
+
   // ============================================
   // StyleKit Schema Definitions
   // ============================================
@@ -102,7 +110,9 @@
             }
           }
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Cannot access stylesheet (likely cross-origin):', sheet.href);
+      }
     }
     data.cssVariables = cssVars;
 
@@ -139,7 +149,9 @@
           addColor(colors, s.backgroundColor, 'background');
           addColor(colors, s.borderColor, 'border');
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Error extracting colors from selector:', sel, e.message);
+      }
     }
 
     // Convert to object
@@ -217,7 +229,9 @@
             typography.sizes.get(size).elements.push(sel);
           }
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Error extracting typography from selector:', sel, e.message);
+      }
     }
 
     return {
@@ -258,7 +272,9 @@
           addSpacing(spacing, s.marginLeft);
           addSpacing(spacing, s.gap);
         }
-      } catch { }
+      } catch (e) {
+        debugWarn('Error extracting spacing from selector:', sel, e.message);
+      }
     }
 
     // Sort by frequency and return top values
@@ -504,15 +520,21 @@
 
       for (const anim of motion.runtimeAnimations) {
         if (anim.timing?.duration) {
-          durations.add(anim.timing.duration);
+          // Normalize duration to number (ms)
+          const dur = typeof anim.timing.duration === 'string'
+            ? parseFloat(anim.timing.duration)
+            : anim.timing.duration;
+          if (!isNaN(dur) && dur > 0) {
+            durations.add(dur);
+          }
         }
         if (anim.timing?.easing) {
           easings.add(anim.timing.easing);
         }
       }
 
-      // Map durations to scale
-      const durationList = Array.from(durations).sort((a, b) => a - b);
+      // Map durations to scale (ensure numeric sort)
+      const durationList = Array.from(durations).sort((a, b) => Number(a) - Number(b));
       if (durationList.length) {
         result.duration.fast = `${durationList[0]}ms`;
         result.duration.normal = `${durationList[Math.floor(durationList.length / 2)]}ms`;
