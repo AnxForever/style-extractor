@@ -1,0 +1,742 @@
+// Style Extractor: Format Converter
+// Converts extracted style data to various output formats
+//
+// Supported formats:
+// - json: Structured JSON schema
+// - tailwind: Tailwind CSS config
+// - cssVars: CSS custom properties
+// - stylekit: StyleKit tokens format
+//
+// Usage in evaluate_script:
+//   window.__seFormat.toJSON(styleData)
+//   window.__seFormat.toTailwind(styleData)
+//   window.__seFormat.toCSSVars(styleData)
+//   window.__seFormat.toStyleKit(styleData)
+
+(() => {
+  if (window.__seFormat?.installed) return;
+
+  // ============================================
+  // Helper Functions
+  // ============================================
+
+  function slugify(str) {
+    return str
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+
+  function toKebabCase(str) {
+    return str
+      .replace(/([a-z])([A-Z])/g, '$1-$2')
+      .toLowerCase();
+  }
+
+  function toCamelCase(str) {
+    return str.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || typeof rgb !== 'string') return rgb;
+    const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match) return rgb;
+    const [, r, g, b] = match;
+    return '#' + [r, g, b].map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+  }
+
+  function parseColor(color) {
+    if (!color) return null;
+    const hex = rgbToHex(color);
+    return hex.startsWith('#') ? hex : color;
+  }
+
+  function parseDuration(duration) {
+    if (!duration) return null;
+    if (typeof duration === 'number') return duration;
+    const match = String(duration).match(/([\d.]+)(ms|s)?/);
+    if (!match) return null;
+    const [, value, unit] = match;
+    return unit === 's' ? parseFloat(value) * 1000 : parseFloat(value);
+  }
+
+  // ============================================
+  // JSON Schema Format
+  // ============================================
+
+  function toJSON(styleData) {
+    const result = {
+      $schema: 'https://stylekit.dev/schema/extracted-style.json',
+      version: '1.0.0',
+      meta: {
+        name: styleData.name || 'Extracted Style',
+        source: styleData.url || null,
+        extractedAt: new Date().toISOString(),
+        generator: 'style-extractor'
+      },
+      colors: {},
+      typography: {},
+      spacing: {},
+      borders: {},
+      shadows: {},
+      animations: {},
+      components: {}
+    };
+
+    // Colors
+    if (styleData.colors) {
+      for (const [name, value] of Object.entries(styleData.colors)) {
+        result.colors[slugify(name)] = {
+          value: parseColor(value),
+          usage: styleData.colorUsage?.[name] || null
+        };
+      }
+    }
+
+    // Typography
+    if (styleData.typography) {
+      result.typography = {
+        families: styleData.typography.families || [],
+        scale: styleData.typography.scale || {},
+        weights: styleData.typography.weights || [400]
+      };
+    }
+
+    // Spacing
+    if (styleData.spacing) {
+      for (const [name, value] of Object.entries(styleData.spacing)) {
+        result.spacing[slugify(name)] = value;
+      }
+    }
+
+    // Borders
+    if (styleData.borders) {
+      result.borders = {
+        widths: styleData.borders.widths || {},
+        radius: styleData.borders.radius || {},
+        colors: styleData.borders.colors || {}
+      };
+    }
+
+    // Shadows
+    if (styleData.shadows) {
+      for (const [name, value] of Object.entries(styleData.shadows)) {
+        result.shadows[slugify(name)] = value;
+      }
+    }
+
+    // Animations
+    if (styleData.animations) {
+      result.animations = {
+        durations: {},
+        easings: {},
+        keyframes: {}
+      };
+
+      if (styleData.animations.durations) {
+        for (const [name, value] of Object.entries(styleData.animations.durations)) {
+          result.animations.durations[slugify(name)] = parseDuration(value);
+        }
+      }
+
+      if (styleData.animations.easings) {
+        result.animations.easings = { ...styleData.animations.easings };
+      }
+
+      if (styleData.animations.keyframes) {
+        result.animations.keyframes = { ...styleData.animations.keyframes };
+      }
+    }
+
+    // Components
+    if (styleData.components) {
+      for (const [name, component] of Object.entries(styleData.components)) {
+        result.components[slugify(name)] = {
+          selector: component.selector || null,
+          states: component.states || {},
+          variants: component.variants || []
+        };
+      }
+    }
+
+    return result;
+  }
+
+  // ============================================
+  // Tailwind CSS Config Format
+  // ============================================
+
+  function toTailwind(styleData) {
+    const config = {
+      theme: {
+        extend: {
+          colors: {},
+          fontFamily: {},
+          fontSize: {},
+          spacing: {},
+          borderRadius: {},
+          boxShadow: {},
+          transitionDuration: {},
+          transitionTimingFunction: {},
+          animation: {},
+          keyframes: {}
+        }
+      }
+    };
+
+    // Colors
+    if (styleData.colors) {
+      for (const [name, value] of Object.entries(styleData.colors)) {
+        const key = slugify(name);
+        config.theme.extend.colors[key] = parseColor(value);
+      }
+    }
+
+    // Typography - Font Families
+    if (styleData.typography?.families) {
+      for (const family of styleData.typography.families) {
+        const key = slugify(family.split(',')[0].replace(/['"]/g, ''));
+        config.theme.extend.fontFamily[key] = [family];
+      }
+    }
+
+    // Typography - Font Sizes
+    if (styleData.typography?.scale) {
+      for (const [name, value] of Object.entries(styleData.typography.scale)) {
+        config.theme.extend.fontSize[slugify(name)] = value;
+      }
+    }
+
+    // Spacing
+    if (styleData.spacing) {
+      for (const [name, value] of Object.entries(styleData.spacing)) {
+        config.theme.extend.spacing[slugify(name)] = value;
+      }
+    }
+
+    // Border Radius
+    if (styleData.borders?.radius) {
+      for (const [name, value] of Object.entries(styleData.borders.radius)) {
+        config.theme.extend.borderRadius[slugify(name)] = value;
+      }
+    }
+
+    // Shadows
+    if (styleData.shadows) {
+      for (const [name, value] of Object.entries(styleData.shadows)) {
+        config.theme.extend.boxShadow[slugify(name)] = value;
+      }
+    }
+
+    // Animation Durations
+    if (styleData.animations?.durations) {
+      for (const [name, value] of Object.entries(styleData.animations.durations)) {
+        const ms = parseDuration(value);
+        if (ms !== null) {
+          config.theme.extend.transitionDuration[slugify(name)] = `${ms}ms`;
+        }
+      }
+    }
+
+    // Animation Easings
+    if (styleData.animations?.easings) {
+      for (const [name, value] of Object.entries(styleData.animations.easings)) {
+        config.theme.extend.transitionTimingFunction[slugify(name)] = value;
+      }
+    }
+
+    // Keyframes
+    if (styleData.animations?.keyframes) {
+      for (const [name, keyframe] of Object.entries(styleData.animations.keyframes)) {
+        const key = slugify(name);
+        config.theme.extend.keyframes[key] = keyframe;
+
+        // Create matching animation
+        const duration = styleData.animations.durations?.[name] || '300ms';
+        const easing = styleData.animations.easings?.[name] || 'ease';
+        config.theme.extend.animation[key] = `${key} ${duration} ${easing}`;
+      }
+    }
+
+    return config;
+  }
+
+  // ============================================
+  // CSS Variables Format
+  // ============================================
+
+  function toCSSVars(styleData) {
+    const vars = [];
+    vars.push(':root {');
+
+    // Colors
+    if (styleData.colors) {
+      vars.push('  /* Colors */');
+      for (const [name, value] of Object.entries(styleData.colors)) {
+        vars.push(`  --color-${toKebabCase(name)}: ${parseColor(value)};`);
+      }
+      vars.push('');
+    }
+
+    // Typography
+    if (styleData.typography?.families) {
+      vars.push('  /* Typography */');
+      styleData.typography.families.forEach((family, i) => {
+        vars.push(`  --font-family-${i === 0 ? 'primary' : i === 1 ? 'secondary' : `f${i}`}: ${family};`);
+      });
+      vars.push('');
+    }
+
+    if (styleData.typography?.scale) {
+      vars.push('  /* Font Sizes */');
+      for (const [name, value] of Object.entries(styleData.typography.scale)) {
+        vars.push(`  --font-size-${toKebabCase(name)}: ${value};`);
+      }
+      vars.push('');
+    }
+
+    // Spacing
+    if (styleData.spacing) {
+      vars.push('  /* Spacing */');
+      for (const [name, value] of Object.entries(styleData.spacing)) {
+        vars.push(`  --space-${toKebabCase(name)}: ${value};`);
+      }
+      vars.push('');
+    }
+
+    // Borders
+    if (styleData.borders?.radius) {
+      vars.push('  /* Border Radius */');
+      for (const [name, value] of Object.entries(styleData.borders.radius)) {
+        vars.push(`  --radius-${toKebabCase(name)}: ${value};`);
+      }
+      vars.push('');
+    }
+
+    // Shadows
+    if (styleData.shadows) {
+      vars.push('  /* Shadows */');
+      for (const [name, value] of Object.entries(styleData.shadows)) {
+        vars.push(`  --shadow-${toKebabCase(name)}: ${value};`);
+      }
+      vars.push('');
+    }
+
+    // Animations
+    if (styleData.animations?.durations) {
+      vars.push('  /* Animation Durations */');
+      for (const [name, value] of Object.entries(styleData.animations.durations)) {
+        const ms = parseDuration(value);
+        if (ms !== null) {
+          vars.push(`  --motion-${toKebabCase(name)}: ${ms}ms;`);
+        }
+      }
+      vars.push('');
+    }
+
+    if (styleData.animations?.easings) {
+      vars.push('  /* Animation Easings */');
+      for (const [name, value] of Object.entries(styleData.animations.easings)) {
+        vars.push(`  --ease-${toKebabCase(name)}: ${value};`);
+      }
+      vars.push('');
+    }
+
+    vars.push('}');
+
+    // Keyframes
+    if (styleData.animations?.keyframes) {
+      vars.push('');
+      vars.push('/* Keyframes */');
+      for (const [name, keyframe] of Object.entries(styleData.animations.keyframes)) {
+        vars.push(`@keyframes ${slugify(name)} {`);
+        if (typeof keyframe === 'string') {
+          vars.push(keyframe);
+        } else {
+          for (const [offset, props] of Object.entries(keyframe)) {
+            vars.push(`  ${offset} {`);
+            for (const [prop, val] of Object.entries(props)) {
+              vars.push(`    ${toKebabCase(prop)}: ${val};`);
+            }
+            vars.push('  }');
+          }
+        }
+        vars.push('}');
+        vars.push('');
+      }
+    }
+
+    return vars.join('\n');
+  }
+
+  // ============================================
+  // StyleKit Tokens Format
+  // ============================================
+
+  function toStyleKit(styleData) {
+    const tokens = {
+      id: slugify(styleData.name || 'extracted-style'),
+      name: styleData.name || 'Extracted Style',
+      description: `Style extracted from ${styleData.url || 'unknown source'}`,
+      source: styleData.url || null,
+      extractedAt: new Date().toISOString(),
+
+      // Core tokens
+      colors: {
+        primary: null,
+        secondary: null,
+        accent: null,
+        background: null,
+        surface: null,
+        text: null,
+        textMuted: null,
+        border: null,
+        error: null,
+        success: null,
+        warning: null,
+        // Raw extracted colors
+        _raw: {}
+      },
+
+      typography: {
+        fontFamily: {
+          primary: null,
+          secondary: null,
+          mono: null
+        },
+        fontSize: {
+          xs: null,
+          sm: null,
+          base: null,
+          lg: null,
+          xl: null,
+          '2xl': null,
+          '3xl': null,
+          '4xl': null
+        },
+        fontWeight: {
+          normal: 400,
+          medium: 500,
+          semibold: 600,
+          bold: 700
+        },
+        lineHeight: {
+          tight: 1.2,
+          normal: 1.5,
+          relaxed: 1.75
+        }
+      },
+
+      spacing: {
+        xs: null,
+        sm: null,
+        md: null,
+        lg: null,
+        xl: null,
+        '2xl': null,
+        '3xl': null,
+        '4xl': null
+      },
+
+      borders: {
+        width: {
+          thin: '1px',
+          default: '2px',
+          thick: '4px'
+        },
+        radius: {
+          none: '0',
+          sm: null,
+          default: null,
+          lg: null,
+          full: '9999px'
+        }
+      },
+
+      shadows: {
+        none: 'none',
+        sm: null,
+        default: null,
+        lg: null
+      },
+
+      motion: {
+        duration: {
+          fast: null,
+          default: null,
+          slow: null
+        },
+        easing: {
+          default: 'ease',
+          in: 'ease-in',
+          out: 'ease-out',
+          inOut: 'ease-in-out'
+        },
+        keyframes: {}
+      },
+
+      components: {}
+    };
+
+    // Map colors to semantic tokens
+    if (styleData.colors) {
+      tokens.colors._raw = { ...styleData.colors };
+
+      // Try to auto-map common color patterns
+      for (const [name, value] of Object.entries(styleData.colors)) {
+        const lower = name.toLowerCase();
+        const hex = parseColor(value);
+
+        if (lower.includes('primary') || lower.includes('brand') || lower.includes('accent')) {
+          tokens.colors.primary = tokens.colors.primary || hex;
+          if (lower.includes('accent')) tokens.colors.accent = hex;
+        } else if (lower.includes('secondary')) {
+          tokens.colors.secondary = hex;
+        } else if (lower.includes('background') || lower.includes('bg')) {
+          tokens.colors.background = tokens.colors.background || hex;
+        } else if (lower.includes('surface') || lower.includes('card')) {
+          tokens.colors.surface = hex;
+        } else if (lower.includes('text') && !lower.includes('muted')) {
+          tokens.colors.text = tokens.colors.text || hex;
+        } else if (lower.includes('muted') || lower.includes('secondary-text')) {
+          tokens.colors.textMuted = hex;
+        } else if (lower.includes('border')) {
+          tokens.colors.border = hex;
+        } else if (lower.includes('error') || lower.includes('danger')) {
+          tokens.colors.error = hex;
+        } else if (lower.includes('success')) {
+          tokens.colors.success = hex;
+        } else if (lower.includes('warning')) {
+          tokens.colors.warning = hex;
+        }
+      }
+    }
+
+    // Map typography
+    if (styleData.typography) {
+      if (styleData.typography.families?.length) {
+        tokens.typography.fontFamily.primary = styleData.typography.families[0];
+        if (styleData.typography.families[1]) {
+          tokens.typography.fontFamily.secondary = styleData.typography.families[1];
+        }
+        // Check for mono font
+        for (const family of styleData.typography.families) {
+          if (family.toLowerCase().includes('mono') || family.toLowerCase().includes('code')) {
+            tokens.typography.fontFamily.mono = family;
+            break;
+          }
+        }
+      }
+
+      if (styleData.typography.scale) {
+        const sizes = Object.entries(styleData.typography.scale)
+          .map(([name, value]) => ({ name, value, px: parseInt(value) }))
+          .filter(s => !isNaN(s.px))
+          .sort((a, b) => a.px - b.px);
+
+        if (sizes.length >= 4) {
+          tokens.typography.fontSize.sm = sizes[0].value;
+          tokens.typography.fontSize.base = sizes[Math.floor(sizes.length / 3)].value;
+          tokens.typography.fontSize.lg = sizes[Math.floor(sizes.length * 2 / 3)].value;
+          tokens.typography.fontSize.xl = sizes[sizes.length - 1].value;
+        }
+      }
+    }
+
+    // Map spacing
+    if (styleData.spacing) {
+      const spacings = Object.entries(styleData.spacing)
+        .map(([name, value]) => ({ name, value, px: parseInt(value) }))
+        .filter(s => !isNaN(s.px))
+        .sort((a, b) => a.px - b.px);
+
+      if (spacings.length >= 4) {
+        tokens.spacing.sm = spacings[0].value;
+        tokens.spacing.md = spacings[Math.floor(spacings.length / 2)].value;
+        tokens.spacing.lg = spacings[spacings.length - 1].value;
+      }
+    }
+
+    // Map borders
+    if (styleData.borders?.radius) {
+      const radii = Object.values(styleData.borders.radius)
+        .map(v => ({ value: v, px: parseInt(v) }))
+        .filter(r => !isNaN(r.px))
+        .sort((a, b) => a.px - b.px);
+
+      if (radii.length) {
+        tokens.borders.radius.sm = radii[0].value;
+        tokens.borders.radius.default = radii[Math.floor(radii.length / 2)].value;
+        if (radii.length > 1) {
+          tokens.borders.radius.lg = radii[radii.length - 1].value;
+        }
+      }
+    }
+
+    // Map shadows
+    if (styleData.shadows) {
+      const shadowList = Object.values(styleData.shadows);
+      if (shadowList.length) {
+        tokens.shadows.default = shadowList[0];
+        if (shadowList.length > 1) {
+          tokens.shadows.sm = shadowList[0];
+          tokens.shadows.lg = shadowList[shadowList.length - 1];
+        }
+      }
+    }
+
+    // Map motion
+    if (styleData.animations) {
+      if (styleData.animations.durations) {
+        const durations = Object.entries(styleData.animations.durations)
+          .map(([name, value]) => ({ name, value, ms: parseDuration(value) }))
+          .filter(d => d.ms !== null)
+          .sort((a, b) => a.ms - b.ms);
+
+        if (durations.length) {
+          tokens.motion.duration.fast = `${durations[0].ms}ms`;
+          tokens.motion.duration.default = `${durations[Math.floor(durations.length / 2)].ms}ms`;
+          tokens.motion.duration.slow = `${durations[durations.length - 1].ms}ms`;
+        }
+      }
+
+      if (styleData.animations.easings) {
+        for (const [name, value] of Object.entries(styleData.animations.easings)) {
+          const lower = name.toLowerCase();
+          if (lower.includes('in') && lower.includes('out')) {
+            tokens.motion.easing.inOut = value;
+          } else if (lower.includes('in')) {
+            tokens.motion.easing.in = value;
+          } else if (lower.includes('out')) {
+            tokens.motion.easing.out = value;
+          } else {
+            tokens.motion.easing.default = value;
+          }
+        }
+      }
+
+      if (styleData.animations.keyframes) {
+        tokens.motion.keyframes = { ...styleData.animations.keyframes };
+      }
+    }
+
+    // Map components
+    if (styleData.components) {
+      tokens.components = { ...styleData.components };
+    }
+
+    return tokens;
+  }
+
+  // ============================================
+  // Generate TypeScript code for StyleKit
+  // ============================================
+
+  function toStyleKitTS(styleData) {
+    const tokens = toStyleKit(styleData);
+
+    let ts = `// StyleKit Style Definition
+// Generated by style-extractor from: ${tokens.source || 'unknown'}
+// Generated at: ${tokens.extractedAt}
+
+import type { StyleDefinition } from '@/lib/styles/types';
+
+export const ${toCamelCase(tokens.id)}Style: StyleDefinition = {
+  id: '${tokens.id}',
+  name: '${tokens.name}',
+  description: '${tokens.description}',
+
+  colors: {
+    primary: '${tokens.colors.primary || '#000000'}',
+    secondary: '${tokens.colors.secondary || '#666666'}',
+    accent: '${tokens.colors.accent || tokens.colors.primary || '#0066cc'}',
+    background: '${tokens.colors.background || '#ffffff'}',
+    surface: '${tokens.colors.surface || '#f5f5f5'}',
+    text: '${tokens.colors.text || '#000000'}',
+    textMuted: '${tokens.colors.textMuted || '#666666'}',
+    border: '${tokens.colors.border || '#e0e0e0'}',
+  },
+
+  typography: {
+    fontFamily: {
+      primary: '${tokens.typography.fontFamily.primary || 'system-ui, sans-serif'}',
+      secondary: '${tokens.typography.fontFamily.secondary || 'inherit'}',
+      mono: '${tokens.typography.fontFamily.mono || 'monospace'}',
+    },
+    fontSize: {
+      sm: '${tokens.typography.fontSize.sm || '14px'}',
+      base: '${tokens.typography.fontSize.base || '16px'}',
+      lg: '${tokens.typography.fontSize.lg || '18px'}',
+      xl: '${tokens.typography.fontSize.xl || '24px'}',
+    },
+  },
+
+  spacing: {
+    sm: '${tokens.spacing.sm || '8px'}',
+    md: '${tokens.spacing.md || '16px'}',
+    lg: '${tokens.spacing.lg || '24px'}',
+  },
+
+  borders: {
+    radius: {
+      sm: '${tokens.borders.radius.sm || '4px'}',
+      default: '${tokens.borders.radius.default || '8px'}',
+      lg: '${tokens.borders.radius.lg || '12px'}',
+    },
+  },
+
+  motion: {
+    duration: {
+      fast: '${tokens.motion.duration.fast || '150ms'}',
+      default: '${tokens.motion.duration.default || '300ms'}',
+      slow: '${tokens.motion.duration.slow || '500ms'}',
+    },
+    easing: {
+      default: '${tokens.motion.easing.default}',
+      in: '${tokens.motion.easing.in}',
+      out: '${tokens.motion.easing.out}',
+      inOut: '${tokens.motion.easing.inOut}',
+    },
+  },
+};
+
+export default ${toCamelCase(tokens.id)}Style;
+`;
+
+    return ts;
+  }
+
+  // ============================================
+  // Export
+  // ============================================
+
+  window.__seFormat = {
+    installed: true,
+
+    // Core converters
+    toJSON,
+    toTailwind,
+    toCSSVars,
+    toStyleKit,
+    toStyleKitTS,
+
+    // Helpers
+    slugify,
+    toKebabCase,
+    toCamelCase,
+    rgbToHex,
+    parseColor,
+    parseDuration,
+
+    // Format all at once
+    convertAll(styleData) {
+      return {
+        json: toJSON(styleData),
+        tailwind: toTailwind(styleData),
+        cssVars: toCSSVars(styleData),
+        styleKit: toStyleKit(styleData),
+        styleKitTS: toStyleKitTS(styleData)
+      };
+    }
+  };
+})();
