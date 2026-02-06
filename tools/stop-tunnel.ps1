@@ -10,12 +10,11 @@ if (!(Test-Path $pidFile)) {
 
 $pids = Get-Content $pidFile -Raw | ConvertFrom-Json
 
-foreach ($pid in @($pids.cloudflaredPid, $pids.serverPid)) {
-  if ($pid -and (Get-Process -Id $pid -ErrorAction SilentlyContinue)) {
-    Stop-Process -Id $pid -Force
+foreach ($procId in @($pids.cloudflaredPid, $pids.serverPid)) {
+  if ($procId -and (Get-Process -Id $procId -ErrorAction SilentlyContinue)) {
+    Stop-Process -Id $procId -Force
   }
 }
 
 Remove-Item -Force $pidFile
 Write-Host "Stopped."
-

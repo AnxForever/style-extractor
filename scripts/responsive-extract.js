@@ -147,7 +147,11 @@
   function extractLayoutContainers() {
     const containers = [];
     const selectors = [
+      // Capture primary page wrappers even when they don't have "container"/"wrapper" class names.
+      'body > *',
       'header', 'nav', 'main', 'aside', 'footer',
+      // Tailwind-style containers: max-w-* + mx-auto wrappers often carry responsive padding.
+      '[class*=\"max-w-\"]', '[class*=\"mx-auto\"]',
       '[class*="container"]', '[class*="wrapper"]',
       '[class*="layout"]', '[class*="grid"]', '[class*="row"]'
     ];
@@ -356,7 +360,7 @@
       step: 1,
       action: 'store_current',
       instruction: 'Store current viewport dimensions for restoration',
-      script: `(() => {\n  const vp = { width: window.innerWidth, height: window.innerHeight };\n  window.__seResponsive.__originalViewport = vp;\n  return vp;\n})()`
+      script: `() => {\n  const vp = { width: window.innerWidth, height: window.innerHeight };\n  window.__seResponsive.__originalViewport = vp;\n  return vp;\n}`
     });
 
     // Steps for each viewport
@@ -368,12 +372,13 @@
       // Resize viewport
       workflow.steps.push({
         step: stepNum++,
-        action: 'emulate_viewport',
+        action: 'resize_viewport',
         viewport: vpName,
-        instruction: `Emulate viewport: ${vp.label} (${vp.width}x${vp.height})`,
+        instruction: `Resize viewport: ${vp.label} (${vp.width}x${vp.height})`,
         mcpTool: {
-          name: 'mcp__chrome-devtools__emulate',
-          params: { viewport: { width: vp.width, height: vp.height } }
+          // resize_page is more broadly supported than emulate across MCP implementations.
+          name: 'mcp__chrome-devtools__resize_page',
+          params: { width: vp.width, height: vp.height }
         }
       });
 

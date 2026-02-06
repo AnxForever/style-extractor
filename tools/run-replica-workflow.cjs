@@ -21,7 +21,7 @@
 
 const fs = require("node:fs");
 const http = require("node:http");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const path = require("node:path");
 
 function getArg(flag, fallback = null) {
@@ -38,6 +38,51 @@ function hasFlag(flag) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function waitForExit(proc, ms) {
+  if (!proc) return Promise.resolve(true);
+  if (proc.exitCode !== null && proc.exitCode !== undefined) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const t = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(false);
+    }, ms);
+
+    proc.once("exit", () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      resolve(true);
+    });
+  });
+}
+
+async function killProcessTree(proc, timeoutMs = 1200) {
+  if (!proc) return;
+
+  try {
+    proc.kill();
+  } catch {}
+
+  if (await waitForExit(proc, timeoutMs)) return;
+
+  // Windows + shell mode can leave grandchildren running (cmd.exe -> npx -> node).
+  // taskkill /T is the most reliable way to cleanly end the tree.
+  if (process.platform === "win32" && proc.pid) {
+    try {
+      spawnSync("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { stdio: "ignore", shell: false });
+    } catch {}
+  } else {
+    try {
+      proc.kill("SIGKILL");
+    } catch {}
+  }
+
+  await waitForExit(proc, timeoutMs);
 }
 
 function withTimeout(promise, ms, label) {
@@ -302,6 +347,10 @@ async function main() {
   const codeMaxNodes = Number(getArg("--codeMaxNodes", "240")) || 240;
   const codeMaxDepth = Number(getArg("--codeMaxDepth", "12")) || 12;
   const promptMaxChars = Number(getArg("--promptMaxChars", "12000")) || 12000;
+  const skipResponsive = hasFlag("--skipResponsive");
+  const withScreenshots = hasFlag("--withScreenshots");
+  const skipScreenshots = hasFlag("--skipScreenshots") || !withScreenshots;
+  const strict = hasFlag("--strict");
 
   if (testInit) {
     // Allow smoke-testing MCP transport without needing Chrome or script injection.
@@ -313,15 +362,38 @@ async function main() {
   }
 
   const browserUrl = browserUrlOverride || (await pickBrowserUrl());
-  const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
   const serverArgs = ["chrome-devtools-mcp@latest", "--browserUrl", browserUrl, "--no-usage-statistics"];
   if (viewport) serverArgs.push("--viewport", viewport);
 
   // Start MCP server (chrome-devtools-mcp)
-  const serverProc = spawn(npxBin, serverArgs, {
-    stdio: ["pipe", "pipe", "pipe"],
-    shell: process.platform === "win32",
-  });
+  // NOTE: On Windows, spawning `npx.cmd` via `shell: true` can cause an intermediate `cmd.exe` to exit
+  // while leaving `chrome-devtools-mcp` running with inherited stdio handles. That keeps this runner alive
+  // even after it finishes. Prefer running `npx-cli.js` directly via Node when available.
+  const npxCliPath =
+    process.platform === "win32"
+      ? path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npx-cli.js")
+      : null;
+
+  const serverProc =
+    npxCliPath && fs.existsSync(npxCliPath)
+      ? spawn(process.execPath, [npxCliPath, ...serverArgs], { stdio: ["pipe", "pipe", "pipe"], shell: false })
+      : spawn(process.platform === "win32" ? "npx.cmd" : "npx", serverArgs, {
+          stdio: ["pipe", "pipe", "pipe"],
+          shell: process.platform === "win32",
+        });
+
+  let cleanedUp = false;
+  const cleanup = async () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    await killProcessTree(serverProc);
+  };
+
+  const handleSignal = (code) => {
+    cleanup().finally(() => process.exit(code));
+  };
+  process.once("SIGINT", () => handleSignal(130));
+  process.once("SIGTERM", () => handleSignal(143));
 
   serverProc.stderr.setEncoding("utf8");
   serverProc.stderr.on("data", (chunk) => {
@@ -330,58 +402,58 @@ async function main() {
 
   const mcp = new McpClient(serverProc);
 
-  // Initialize
-  await withTimeout(
-    mcp.request("initialize", {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      clientInfo: { name: "style-extractor-replica-runner", version: "0.1.0" },
-    }),
-    toolTimeoutMs,
-    "initialize",
-  );
-  mcp.notify("notifications/initialized", {});
-
-  // Discover tool names
-  const list = await withTimeout(mcp.request("tools/list", {}), toolTimeoutMs, "tools/list");
-  const toolNames = new Set((list?.tools || []).map((t) => t.name));
-
-  if (testInit) {
-    // eslint-disable-next-line no-console
-    console.log(`ok: initialize + tools/list (${toolNames.size} tools)`);
-    try {
-      serverProc.kill();
-    } catch {}
-    return;
-  }
-
-  const callTool = async (name, params) => {
-    const normalized = toolNames.has(name) ? name : stripToolPrefix(name);
-    if (!toolNames.has(normalized)) {
-      throw new Error(`Tool not found: ${name} (normalized=${normalized})`);
-    }
-    const result = await withTimeout(
-      mcp.request("tools/call", { name: normalized, arguments: params || {} }),
+  let succeeded = false;
+  try {
+    // Initialize
+    await withTimeout(
+      mcp.request("initialize", {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {} },
+        clientInfo: { name: "style-extractor-replica-runner", version: "0.1.0" },
+      }),
       toolTimeoutMs,
-      `tools/call ${normalized}`,
+      "initialize",
     );
-    if (result?.isError) {
-      const message = flattenToolResult(result);
-      throw new Error(`Tool failed: ${normalized}\n${String(message || "").trim()}`);
+    mcp.notify("notifications/initialized", {});
+
+    // Discover tool names
+    const list = await withTimeout(mcp.request("tools/list", {}), toolTimeoutMs, "tools/list");
+    const toolNames = new Set((list?.tools || []).map((t) => t.name));
+
+    if (testInit) {
+      // eslint-disable-next-line no-console
+      console.log(`ok: initialize + tools/list (${toolNames.size} tools)`);
+      succeeded = true;
+      return;
     }
-    return result;
-  };
 
-  // Open page
-  const page = await callTool("mcp__chrome-devtools__new_page", { url });
-  const pageText = flattenToolResult(page);
-  if (hasFlag("--debug")) {
-    process.stderr.write(String(pageText || "") + "\n");
-  }
+    const callTool = async (name, params) => {
+      const normalized = toolNames.has(name) ? name : stripToolPrefix(name);
+      if (!toolNames.has(normalized)) {
+        throw new Error(`Tool not found: ${name} (normalized=${normalized})`);
+      }
+      const result = await withTimeout(
+        mcp.request("tools/call", { name: normalized, arguments: params || {} }),
+        toolTimeoutMs,
+        `tools/call ${normalized}`,
+      );
+      if (result?.isError) {
+        const message = flattenToolResult(result);
+        throw new Error(`Tool failed: ${normalized}\n${String(message || "").trim()}`);
+      }
+      return result;
+    };
 
-  // Inject scripts (from tunnel)
-  const inject = await callTool("mcp__chrome-devtools__evaluate_script", {
-    function: `async () => {
+    // Open page
+    const page = await callTool("mcp__chrome-devtools__new_page", { url });
+    const pageText = flattenToolResult(page);
+    if (hasFlag("--debug")) {
+      process.stderr.write(String(pageText || "") + "\n");
+    }
+
+    // Inject scripts (from tunnel)
+    const inject = await callTool("mcp__chrome-devtools__evaluate_script", {
+      function: `async () => {
       const base = ${JSON.stringify(baseUrl)};
       const entries = [
         { file: 'scripts/utils.js', globals: ['__seUtils'] },
@@ -431,168 +503,323 @@ async function main() {
         loaded
       };
     }`,
-  });
-  const injectText = flattenToolResult(inject);
-  if (hasFlag("--debug")) process.stderr.write(String(injectText || "") + "\n");
+    });
+    const injectText = flattenToolResult(inject);
+    if (hasFlag("--debug")) process.stderr.write(String(injectText || "") + "\n");
 
-  // Get batch steps only (avoid returning huge objects)
-  const stepsRes = await callTool("mcp__chrome-devtools__evaluate_script", {
-    function: `async () => {
+    // Get interaction batch steps only (avoid returning huge objects)
+    const stepsRes = await callTool("mcp__chrome-devtools__evaluate_script", {
+      function: `async () => {
       const r = await window.extractStyle({ preset: 'replica', format: 'json' });
       const steps = r?.data?.blueprint?.interaction?.workflowsForTopTargets?.batch?.serialized?.steps || [];
       return { ok: true, stepCount: steps.length, steps };
     }`,
-  });
-  const stepsText = flattenToolResult(stepsRes);
-  const parsed = parseJsonFromToolText(stepsText);
-  if (!parsed) throw new Error("Failed to parse steps JSON from evaluate_script");
-  const steps = Array.isArray(parsed?.steps) ? parsed.steps : [];
-  if (!steps.length) {
+    });
+    const stepsText = flattenToolResult(stepsRes);
+    const parsed = parseJsonFromToolText(stepsText);
+    if (!parsed) throw new Error("Failed to parse steps JSON from evaluate_script");
+    const interactionSteps = Array.isArray(parsed?.steps) ? parsed.steps : [];
+    if (!interactionSteps.length) {
+      // eslint-disable-next-line no-console
+      console.error("No steps found in blueprint interaction batch.");
+      process.exit(1);
+    }
+
+    function serializeViewportWorkflow(workflow) {
+      if (!workflow || typeof workflow !== "object") return [];
+      const wfSteps = Array.isArray(workflow.steps) ? workflow.steps : [];
+      const out = [];
+      for (const s of wfSteps) {
+        if (s?.mcpTool?.name) {
+          out.push({
+            step: s.step ?? null,
+            tool: s.mcpTool.name,
+            params: s.mcpTool.params || {},
+            action: s.action || null,
+            selector: null,
+          });
+        }
+        if (s?.script) {
+          out.push({
+            step: s.step ?? null,
+            tool: "mcp__chrome-devtools__evaluate_script",
+            params: { function: s.script },
+            action: s.action || null,
+            selector: null,
+          });
+        }
+      }
+      return out;
+    }
+
+    let lastSnapshotNodes = null;
+
+    const runSteps = async (steps, stageLabel) => {
+      // eslint-disable-next-line no-console
+      console.log(`[stage] ${stageLabel}: ${steps.length} steps`);
+
+      for (let idx = 0; idx < steps.length; idx += 1) {
+        if (maxSteps && idx >= maxSteps) break;
+        const step = steps[idx];
+        const stepNo = step.step ?? "?";
+        let tool = step.tool;
+        let params = step.params || {};
+        const shortTool = stripToolPrefix(tool);
+
+        // eslint-disable-next-line no-console
+        console.log(`[${stageLabel} ${stepNo}] ${tool} ${step.action || ""}`.trim());
+
+        if (skipScreenshots && shortTool === "take_screenshot") {
+          // eslint-disable-next-line no-console
+          console.log("  skipped screenshot");
+          continue;
+        }
+
+        // Normalize common mismatch: emulate viewport object -> resize_page
+        if (shortTool === "emulate" && params && typeof params === "object") {
+          const vp = params.viewport;
+          if (vp && typeof vp === "object") {
+            const w = Number(vp.width);
+            const h = Number(vp.height);
+            if (Number.isFinite(w) && Number.isFinite(h)) {
+              tool = "mcp__chrome-devtools__resize_page";
+              params = { width: w, height: h };
+            }
+          }
+        }
+
+        // Resolve UID placeholder for hover/click.
+        if (params && typeof params === "object" && typeof params.uid === "string" && params.uid.includes("<element_uid>")) {
+          if (!lastSnapshotNodes || lastSnapshotNodes.length === 0) {
+            // Take a snapshot now (best effort)
+            const snap = await callTool("mcp__chrome-devtools__take_snapshot", {});
+            lastSnapshotNodes = parseSnapshotText(flattenToolResult(snap));
+          }
+
+          const selector = step.selector || null;
+          const hintRes = selector
+            ? await callTool("mcp__chrome-devtools__evaluate_script", {
+                function: `() => {
+                  const sel = ${JSON.stringify(selector)};
+                  const el = document.querySelector(sel);
+                  if (!el) return { ok: false, selector: sel };
+                  const tag = el.tagName.toLowerCase();
+                  const role = el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'button' ? 'button' : tag);
+                  const name = (el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 120);
+                  const url = tag === 'a' ? (el.href || null) : null;
+                  return { ok: true, selector: sel, role, name, url };
+                }`,
+              })
+            : null;
+
+          const hintText = hintRes ? flattenToolResult(hintRes) : null;
+          const hint = parseJsonFromToolText(hintText);
+
+          if (!hint?.ok) {
+            throw new Error(`Cannot resolve UID: failed to compute hint for selector (step=${stepNo})`);
+          }
+
+          let best = null;
+          for (const node of lastSnapshotNodes) {
+            const score = scoreSnapshotNode(node, hint);
+            if (!best || score > best.score) best = { node, score };
+          }
+
+          if (!best || best.score < 40) {
+            throw new Error(
+              `Cannot resolve UID for step=${stepNo}. Hint role=${hint.role} name=${hint.name}. Take a snapshot and pick UID manually.`,
+            );
+          }
+
+          params.uid = best.node.uid;
+          // eslint-disable-next-line no-console
+          console.log(`  resolved uid=${params.uid} (role=${best.node.role} name="${best.node.name}")`);
+        }
+
+        let res;
+        try {
+          res = await callTool(tool, params);
+        } catch (err) {
+          // Screenshots are optional; keep going even if flaky.
+          if (shortTool === "take_screenshot") {
+            // eslint-disable-next-line no-console
+            console.error(`  screenshot failed (continuing): ${String(err?.message || err)}`);
+            continue;
+          }
+          // Hover/click can be flaky on busy pages or when elements are off-screen/covered.
+          // Default to tolerant behavior so the workflow can still complete and emit outputs.
+          if (!strict && (shortTool === "hover" || shortTool === "click")) {
+            // eslint-disable-next-line no-console
+            console.error(`  ${shortTool} failed (continuing): ${String(err?.message || err)}`);
+            continue;
+          }
+          throw err;
+        }
+        const text = flattenToolResult(res);
+
+        // Track latest snapshot for future UID resolution.
+        if (stripToolPrefix(tool) === "take_snapshot") {
+          lastSnapshotNodes = parseSnapshotText(text);
+        }
+
+        // Special-case restore: if the script returned {width,height}, resize back.
+        if (shortTool === "evaluate_script" && step.action === "restore") {
+          const payload = parseJsonFromToolText(text);
+          const w = Number(payload?.width);
+          const h = Number(payload?.height);
+          if (Number.isFinite(w) && Number.isFinite(h)) {
+            try {
+              await callTool("mcp__chrome-devtools__resize_page", { width: w, height: h });
+            } catch {}
+          }
+        }
+
+        if (hasFlag("--debug")) {
+          process.stderr.write(String(text || "") + "\n");
+        }
+
+        // Small pacing to reduce flakiness on heavy pages.
+        await sleep(80);
+      }
+    };
+
+    await runSteps(interactionSteps, "interaction");
+
+    if (!skipResponsive) {
+      const responsiveRes = await callTool("mcp__chrome-devtools__evaluate_script", {
+        function: `async () => {
+          const r = await window.extractStyle({ preset: 'replica', format: 'json' });
+          const wf = r?.data?.blueprint?.responsive?.viewportWorkflow || null;
+          const steps = wf?.serialized?.steps || null;
+          return { ok: true, hasSerialized: Array.isArray(steps), stepCount: Array.isArray(steps) ? steps.length : 0, steps, workflow: wf };
+        }`,
+      });
+
+      const responsivePayload = parseJsonFromToolText(flattenToolResult(responsiveRes));
+      const responsiveSteps = Array.isArray(responsivePayload?.steps)
+        ? responsivePayload.steps
+        : serializeViewportWorkflow(responsivePayload?.workflow);
+
+      if (responsiveSteps.length > 0) {
+        await runSteps(responsiveSteps, "responsive");
+      } else {
+        // eslint-disable-next-line no-console
+        console.log("[stage] responsive: no steps (skipped)");
+      }
+    }
+
+    // Re-run extraction for a compact verification summary.
+    const verify = await callTool("mcp__chrome-devtools__evaluate_script", {
+      function: `async () => {
+        const r = await window.extractStyle({ preset: 'replica', format: 'json' });
+        const stateData = r?.data?.['state-capture'] || null;
+        const capturedCount = stateData?.captured?.states ? Object.keys(stateData.captured.states).length : 0;
+        const blueprintTargets = r?.data?.blueprint?.interaction?.targets?.length || 0;
+        const recCount = r?.data?.blueprint?.interaction?.recommendations?.total || 0;
+        const responsiveLayouts = r?.data?.blueprint?.responsive?.variants?.layouts || null;
+        const responsiveCount = responsiveLayouts ? Object.keys(responsiveLayouts).length : 0;
+        return { ok: true, capturedCount, responsiveCount, blueprintTargets, recCount };\n      }`,
+    });
     // eslint-disable-next-line no-console
-    console.error("No steps found in blueprint batch.");
-    process.exit(1);
-  }
+    console.log("verify:", parseJsonFromToolText(flattenToolResult(verify)) || flattenToolResult(verify));
 
-  let lastSnapshotNodes = null;
+    if (outDir) {
+      const out = await callTool("mcp__chrome-devtools__evaluate_script", {
+        function: `async () => {
+         const r = await window.extractStyle({ preset: 'replica', format: 'raw' });
+         const bp = r?.data?.blueprint || null;
+         const sc = r?.data?.['state-capture'] || null;
+         const files = window.__seCodeGen?.toReplicaReact
+           ? window.__seCodeGen.toReplicaReact(bp, sc, { maxNodes: ${codeMaxNodes}, maxDepth: ${codeMaxDepth}, stateLimit: 12 })
+           : null;
+         const prompt = window.__seBlueprint?.toLLMPrompt
+           ? window.__seBlueprint.toLLMPrompt(bp, { maxChars: ${promptMaxChars} })
+           : null;
+         const responsiveSummary = (() => {
+           const stored = window.__seResponsive?.getAllStoredLayouts ? window.__seResponsive.getAllStoredLayouts() : null;
+           if (!stored || typeof stored !== 'object') return null;
 
-  for (let idx = 0; idx < steps.length; idx += 1) {
-    if (maxSteps && idx >= maxSteps) break;
-    const step = steps[idx];
-    const stepNo = step.step ?? "?";
-    const tool = step.tool;
-    const params = step.params || {};
+           const pickContainers = (layout) => {
+             const list = Array.isArray(layout?.layoutContainers) ? layout.layoutContainers : [];
+             const candidates = list
+               .filter((c) => c && typeof c === 'object' && c.selector && c.rect)
+               .map((c) => ({
+                 selector: c.selector || null,
+                 rect: c.rect || null,
+                 padding: c?.sizing?.padding || null,
+                 margin: c?.sizing?.margin || null,
+                 maxWidth: c?.sizing?.maxWidth || null
+               }));
+             candidates.sort((a, b) => {
+               const aw = Number(a?.rect?.width) || 0;
+               const ah = Number(a?.rect?.height) || 0;
+               const bw = Number(b?.rect?.width) || 0;
+               const bh = Number(b?.rect?.height) || 0;
+               return (bw * bh) - (aw * ah);
+             });
+             return candidates.slice(0, 40);
+           };
 
-    // eslint-disable-next-line no-console
-    console.log(`[${stepNo}] ${tool} ${step.action || ""}`.trim());
+           const out = {};
+           for (const [name, layout] of Object.entries(stored)) {
+             if (!layout || typeof layout !== 'object') continue;
+             out[name] = {
+               viewport: layout.viewport || null,
+               breakpoint: layout.breakpoint || null,
+               containerCount: Array.isArray(layout.layoutContainers) ? layout.layoutContainers.length : 0,
+               containers: pickContainers(layout)
+             };
+           }
+           return out;
+         })();
+         return {
+           ok: true,
+           hasBlueprint: !!bp,
+           fileKeys: files?.files ? Object.keys(files.files) : [],
+           files: files?.files || null,
+           prompt,
+           responsiveSummary
+         };
+       }`,
+         });
 
-    // Resolve UID placeholder for hover/click.
-    if (params && typeof params === "object" && typeof params.uid === "string" && params.uid.includes("<element_uid>")) {
-      if (!lastSnapshotNodes || lastSnapshotNodes.length === 0) {
-        // Take a snapshot now (best effort)
-        const snap = await callTool("mcp__chrome-devtools__take_snapshot", {});
-        lastSnapshotNodes = parseSnapshotText(flattenToolResult(snap));
+      const payload = parseJsonFromToolText(flattenToolResult(out));
+      if (!payload?.ok) {
+        throw new Error("Failed to generate replica outputs for --outDir");
       }
 
-      const selector = step.selector || null;
-      const hintRes = selector
-        ? await callTool("mcp__chrome-devtools__evaluate_script", {
-            function: `() => {
-              const sel = ${JSON.stringify(selector)};
-              const el = document.querySelector(sel);
-              if (!el) return { ok: false, selector: sel };
-              const tag = el.tagName.toLowerCase();
-              const role = el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'button' ? 'button' : tag);
-              const name = (el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 120);
-              const url = tag === 'a' ? (el.href || null) : null;
-              return { ok: true, selector: sel, role, name, url };
-            }`,
-          })
-        : null;
-
-      const hintText = hintRes ? flattenToolResult(hintRes) : null;
-      const hint = parseJsonFromToolText(hintText);
-
-      if (!hint?.ok) {
-        throw new Error(`Cannot resolve UID: failed to compute hint for selector (step=${stepNo})`);
+      fs.mkdirSync(outDir, { recursive: true });
+      const files = payload.files && typeof payload.files === "object" ? payload.files : null;
+      if (files) {
+        for (const [name, content] of Object.entries(files)) {
+          if (!name || typeof content !== "string") continue;
+          const filePath = path.join(outDir, name);
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, content, "utf8");
+        }
       }
-
-      let best = null;
-      for (const node of lastSnapshotNodes) {
-        const score = scoreSnapshotNode(node, hint);
-        if (!best || score > best.score) best = { node, score };
+      if (typeof payload.prompt === "string" && payload.prompt.trim()) {
+        fs.writeFileSync(path.join(outDir, "prompt.md"), payload.prompt, "utf8");
       }
-
-      if (!best || best.score < 40) {
-        throw new Error(
-          `Cannot resolve UID for step=${stepNo}. Hint role=${hint.role} name=${hint.name}. Take a snapshot and pick UID manually.`,
+      if (payload.responsiveSummary && typeof payload.responsiveSummary === "object") {
+        fs.writeFileSync(
+          path.join(outDir, "responsive-summary.json"),
+          JSON.stringify(payload.responsiveSummary, null, 2),
+          "utf8",
         );
       }
 
-      params.uid = best.node.uid;
       // eslint-disable-next-line no-console
-      console.log(`  resolved uid=${params.uid} (role=${best.node.role} name="${best.node.name}")`);
+      console.log(
+        `[outDir] wrote ${files ? Object.keys(files).length : 0} files${payload.prompt ? " + prompt.md" : ""} to ${outDir}`,
+      );
     }
 
-    const res = await callTool(tool, params);
-    const text = flattenToolResult(res);
-
-    // Track latest snapshot for future UID resolution.
-    if (stripToolPrefix(tool) === "take_snapshot") {
-      lastSnapshotNodes = parseSnapshotText(text);
-    }
-
-    if (hasFlag("--debug")) {
-      process.stderr.write(String(text || "") + "\n");
-    }
-
-    // Small pacing to reduce flakiness on heavy pages.
-    await sleep(80);
+    succeeded = true;
+  } finally {
+    await cleanup();
+    if (succeeded) process.exit(0);
   }
-
-  // Re-run extraction for a compact verification summary.
-  const verify = await callTool("mcp__chrome-devtools__evaluate_script", {
-    function: `async () => {
-      const r = await window.extractStyle({ preset: 'replica', format: 'json' });
-      const stateData = r?.data?.['state-capture'] || null;
-      const capturedCount = stateData?.captured?.states ? Object.keys(stateData.captured.states).length : 0;
-      const blueprintTargets = r?.data?.blueprint?.interaction?.targets?.length || 0;
-      const recCount = r?.data?.blueprint?.interaction?.recommendations?.total || 0;
-      return { ok: true, capturedCount, blueprintTargets, recCount };\n    }`,
-  });
-  // eslint-disable-next-line no-console
-  console.log("verify:", parseJsonFromToolText(flattenToolResult(verify)) || flattenToolResult(verify));
-
-  if (outDir) {
-    const out = await callTool("mcp__chrome-devtools__evaluate_script", {
-      function: `async () => {
-        const r = await window.extractStyle({ preset: 'replica', format: 'raw' });
-        const bp = r?.data?.blueprint || null;
-        const sc = r?.data?.['state-capture'] || null;
-        const files = window.__seCodeGen?.toReplicaReact
-          ? window.__seCodeGen.toReplicaReact(bp, sc, { maxNodes: ${codeMaxNodes}, maxDepth: ${codeMaxDepth}, stateLimit: 12 })
-          : null;
-        const prompt = window.__seBlueprint?.toLLMPrompt
-          ? window.__seBlueprint.toLLMPrompt(bp, { maxChars: ${promptMaxChars} })
-          : null;
-        return {
-          ok: true,
-          hasBlueprint: !!bp,
-          fileKeys: files?.files ? Object.keys(files.files) : [],
-          files: files?.files || null,
-          prompt
-        };
-      }`,
-    });
-
-    const payload = parseJsonFromToolText(flattenToolResult(out));
-    if (!payload?.ok) {
-      throw new Error("Failed to generate replica outputs for --outDir");
-    }
-
-    fs.mkdirSync(outDir, { recursive: true });
-    const files = payload.files && typeof payload.files === "object" ? payload.files : null;
-    if (files) {
-      for (const [name, content] of Object.entries(files)) {
-        if (!name || typeof content !== "string") continue;
-        const filePath = path.join(outDir, name);
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, content, "utf8");
-      }
-    }
-    if (typeof payload.prompt === "string" && payload.prompt.trim()) {
-      fs.writeFileSync(path.join(outDir, "prompt.md"), payload.prompt, "utf8");
-    }
-
-    // eslint-disable-next-line no-console
-    console.log(
-      `[outDir] wrote ${files ? Object.keys(files).length : 0} files${payload.prompt ? " + prompt.md" : ""} to ${outDir}`,
-    );
-  }
-
-  // Cleanup
-  try {
-    serverProc.kill();
-  } catch {}
 }
 
 main().catch((e) => {

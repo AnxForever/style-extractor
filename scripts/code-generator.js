@@ -507,7 +507,7 @@ export { default as Page } from './Page.vue';
     return out.length ? ' ' + out.join(' ') : '';
   }
 
-  function buildCssDeclsFromBlueprintNode(node) {
+  function buildCssDeclsFromBlueprintNode(node, options = {}) {
     const decls = [];
     if (!node) return decls;
 
@@ -521,6 +521,9 @@ export { default as Page } from './Page.vue';
       pushDecl(decls, 'right', layout.right);
       pushDecl(decls, 'bottom', layout.bottom);
       pushDecl(decls, 'left', layout.left);
+      pushDecl(decls, 'overflow', layout.overflow);
+      pushDecl(decls, 'overflowX', layout.overflowX);
+      pushDecl(decls, 'overflowY', layout.overflowY);
 
       if (layout.flex) {
         pushDecl(decls, 'flexDirection', layout.flex.direction);
@@ -531,7 +534,10 @@ export { default as Page } from './Page.vue';
       }
 
       if (layout.grid) {
-        pushDecl(decls, 'gridTemplateColumns', layout.grid.columns);
+        const cols = options.normalizeGridTemplateColumns === false
+          ? layout.grid.columns
+          : normalizeGridTemplateColumns(layout.grid.columns, node?.rect, layout.grid.gap, options);
+        pushDecl(decls, 'gridTemplateColumns', cols);
         pushDecl(decls, 'gridTemplateRows', layout.grid.rows);
         pushDecl(decls, 'gridAutoFlow', layout.grid.autoFlow);
         pushDecl(decls, 'gap', layout.grid.gap);
@@ -545,7 +551,8 @@ export { default as Page } from './Page.vue';
     const constraints = node.constraints || null;
     if (constraints?.spacing) {
       const padding = boxToShorthand(constraints.spacing.padding);
-      const margin = boxToShorthand(constraints.spacing.margin);
+      const normalizedMarginBox = maybeNormalizeCenteringMargin(constraints.spacing.margin, constraints.size);
+      const margin = boxToShorthand(normalizedMarginBox || constraints.spacing.margin);
       if (padding && padding !== '0 0 0 0') pushDecl(decls, 'padding', padding);
       if (margin && margin !== '0 0 0 0') pushDecl(decls, 'margin', margin);
       // Prefer container-level gap from layout.flex/grid; keep as fallback.
@@ -595,6 +602,10 @@ export { default as Page } from './Page.vue';
       pushDecl(decls, 'backgroundPosition', visual.backgroundPosition);
       pushDecl(decls, 'backgroundRepeat', visual.backgroundRepeat);
       pushDecl(decls, 'borderRadius', visual.borderRadius);
+      pushDecl(decls, 'cursor', visual.cursor);
+      pushDecl(decls, 'aspectRatio', visual.aspectRatio);
+      pushDecl(decls, 'objectFit', visual.objectFit);
+      pushDecl(decls, 'objectPosition', visual.objectPosition);
 
       if (visual.border) {
         const b = visual.border;
@@ -614,6 +625,13 @@ export { default as Page } from './Page.vue';
       pushDecl(decls, 'filter', visual.filter);
       pushDecl(decls, 'backdropFilter', visual.backdropFilter);
       pushDecl(decls, 'mixBlendMode', visual.mixBlendMode);
+
+      if (visual.transition) {
+        pushDecl(decls, 'transitionProperty', visual.transition.property);
+        pushDecl(decls, 'transitionDuration', visual.transition.duration);
+        pushDecl(decls, 'transitionTimingFunction', visual.transition.timingFunction);
+        pushDecl(decls, 'transitionDelay', visual.transition.delay);
+      }
     }
 
     return decls;
@@ -640,6 +658,178 @@ export { default as Page } from './Page.vue';
     return count;
   }
 
+  function normalizeCssValue(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/\s+/g, ' ').trim();
+  }
+
+  function normalizeBoxShorthand(value) {
+    const v = normalizeCssValue(value);
+    if (!v) return '';
+    const parts = v.split(' ').filter(Boolean);
+    if (parts.length === 0) return '';
+    if (parts.length === 1) return `${parts[0]} ${parts[0]} ${parts[0]} ${parts[0]}`;
+    if (parts.length === 2) return `${parts[0]} ${parts[1]} ${parts[0]} ${parts[1]}`;
+    if (parts.length === 3) return `${parts[0]} ${parts[1]} ${parts[2]} ${parts[1]}`;
+    return parts.slice(0, 4).join(' ');
+  }
+
+  function parsePx(value) {
+    if (value === null || value === undefined) return null;
+    const m = String(value).trim().match(/^(-?\d+(?:\.\d+)?)px$/);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function maybeNormalizeCenteringMargin(marginBox, sizeBox) {
+    // Many centered containers resolve `margin-left/right: auto` into symmetric pixel values.
+    // When we also have an explicit max-width, prefer `auto` so the replica stays centered.
+    if (!marginBox || typeof marginBox !== 'object') return null;
+    if (!sizeBox || typeof sizeBox !== 'object') return null;
+    if (!(typeof sizeBox.maxWidth === 'number' && sizeBox.maxWidth > 0)) return null;
+
+    const top = marginBox.top || '0';
+    const bottom = marginBox.bottom || top;
+    const left = marginBox.left || '0';
+    const right = marginBox.right || left;
+
+    const l = String(left).trim();
+    const r = String(right).trim();
+
+    if (l === 'auto' || r === 'auto') {
+      return { top, right: 'auto', bottom, left: 'auto' };
+    }
+
+    const lpx = parsePx(l);
+    const rpx = parsePx(r);
+    if (lpx === null || rpx === null) return null;
+
+    if (Math.abs(lpx - rpx) > 2) return null;
+    if (Math.max(lpx, rpx) < 16) return null;
+
+    return { top, right: 'auto', bottom, left: 'auto' };
+  }
+
+  function parseGapPx(gap) {
+    const v = normalizeCssValue(gap);
+    if (!v) return { row: null, col: null };
+    const parts = v.split(' ').filter(Boolean);
+    const row = parsePx(parts[0]);
+    const col = parsePx(parts[1] || parts[0]);
+    return { row, col };
+  }
+
+  function parsePxTrackList(columns) {
+    // Only handle simple resolved lists like: "317px 317px" or "658px".
+    const v = normalizeCssValue(columns);
+    if (!v || v === 'none') return null;
+    const parts = v.split(' ').filter(Boolean);
+    if (parts.length < 1) return null;
+
+    const nums = [];
+    for (const p of parts) {
+      const n = parsePx(p);
+      if (n === null) return null;
+      nums.push(n);
+    }
+    return nums;
+  }
+
+  function normalizeGridTemplateColumns(columns, rect, gap, options = {}) {
+    // Convert some computed pixel-resolved grids back into flexible fr tracks.
+    // Example: "317px 317px" -> "repeat(2, minmax(0, 1fr))"
+    const v = normalizeCssValue(columns);
+    if (!v || v === 'none') return columns;
+    if (options.normalizeGridTemplateColumns === false) return columns;
+
+    const lower = v.toLowerCase();
+    // Already flexible or expression-based: keep as-is.
+    if (
+      lower.includes('fr') ||
+      lower.includes('minmax') ||
+      lower.includes('auto-fit') ||
+      lower.includes('auto-fill') ||
+      lower.includes('%') ||
+      lower.includes('calc(')
+    ) {
+      return columns;
+    }
+
+    const tracks = parsePxTrackList(v);
+    if (!tracks) return columns;
+    const n = tracks.length;
+    if (n < 1 || n > 6) return columns;
+
+    const min = Math.min(...tracks);
+    const max = Math.max(...tracks);
+    if (!(min > 0) || !(max > 0)) return columns;
+
+    if (n >= 2) {
+      const equalTol = Number.isFinite(options.gridColumnEqualTolerance) ? options.gridColumnEqualTolerance : 0.04;
+      if ((max - min) / max > equalTol) return columns;
+    } else {
+      const singleMinPx = Number.isFinite(options.gridSingleTrackMinPx) ? options.gridSingleTrackMinPx : 320;
+      if (tracks[0] < singleMinPx) return columns;
+    }
+
+    const { col: colGap } = parseGapPx(gap);
+    const totalGap = Number.isFinite(colGap) ? colGap * (n - 1) : 0;
+    const totalTracks = tracks.reduce((a, b) => a + b, 0) + totalGap;
+
+    const rectW = rect && Number.isFinite(rect.width) ? Number(rect.width) : null;
+    if (Number.isFinite(rectW) && rectW > 0) {
+      const fillTol = Number.isFinite(options.gridColumnFillTolerance) ? options.gridColumnFillTolerance : 0.12;
+      const ratio = totalTracks / rectW;
+      if (ratio < 1 - fillTol || ratio > 1 + fillTol) {
+        // Likely a fixed-size grid or overflow layout.
+        return columns;
+      }
+    } else if (n === 1) {
+      // Without a container width reference, don't guess a single-track normalization.
+      return columns;
+    }
+
+    if (n === 1) return 'minmax(0, 1fr)';
+    return `repeat(${n}, minmax(0, 1fr))`;
+  }
+
+  function rectArea(rect) {
+    if (!rect) return 0;
+    const w = Number(rect.width);
+    const h = Number(rect.height);
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return 0;
+    return Math.max(0, w) * Math.max(0, h);
+  }
+
+  function indexBySelector(items) {
+    const map = new Map();
+    const list = Array.isArray(items) ? items : [];
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
+      if (!item.selector) continue;
+      map.set(item.selector, item);
+    }
+    return map;
+  }
+
+  function inferViewportMaxWidthPx(viewportName, layout, options = {}) {
+    const overrides = options.responsiveMaxWidthByViewport;
+    if (overrides && typeof overrides === 'object') {
+      const v = overrides[viewportName];
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return Math.round(n);
+    }
+
+    const name = String(viewportName || '').toLowerCase();
+    if (name === 'mobile' || name === 'mobilelarge') return 767;
+    if (name === 'tablet' || name === 'tabletlandscape') return 1023;
+    if (name === 'laptop') return 1279;
+
+    const w = layout?.viewport?.width;
+    return Number.isFinite(w) && w > 0 ? Math.round(w) : null;
+  }
+
   function toReplicaCSS(blueprint, stateCapture, options = {}) {
     if (!blueprint?.tree) return '';
 
@@ -647,6 +837,7 @@ export { default as Page } from './Page.vue';
     const selectorFor = (uid) => `[${dataAttr}="${uid}"]`;
 
     const rules = [];
+    const baseHasMargin = new Set();
 
     // Base reset for predictable rendering.
     rules.push(`/* Generated by style-extractor replica codegen */`);
@@ -657,8 +848,11 @@ export { default as Page } from './Page.vue';
     walkBlueprintTree(
       blueprint.tree,
       (node) => {
-        const decls = buildCssDeclsFromBlueprintNode(node);
+        const decls = buildCssDeclsFromBlueprintNode(node, options);
         if (!decls.length) return;
+        if (decls.some((d) => String(d).startsWith('margin:'))) {
+          baseHasMargin.add(node.uid);
+        }
         rules.push(`${selectorFor(node.uid)} {`);
         rules.push(`  ${decls.join('\n  ')}`);
         rules.push(`}`);
@@ -788,6 +982,334 @@ export { default as Page } from './Page.vue';
         }
 
         seen += 1;
+      }
+    }
+
+    // Responsive overrides (best-effort): generate @media blocks from stored viewport layouts.
+    // This requires that the viewport workflow has been executed so __seResponsive has stored layouts.
+    const includeResponsive = options.includeResponsive !== false;
+    if (includeResponsive && window.__seResponsive?.getAllStoredLayouts) {
+      try {
+        const stored = window.__seResponsive.getAllStoredLayouts();
+        const entries = stored && typeof stored === 'object' ? Object.entries(stored) : [];
+        const valid = entries
+          .filter(([, v]) => v && typeof v === 'object' && v.viewport && Number.isFinite(v.viewport.width))
+          .map(([k, v]) => [k, v]);
+
+        if (valid.length >= 2) {
+          // Prefer desktop as base if present; otherwise pick the widest stored viewport.
+          let baseName = valid.some(([k]) => k === 'desktop') ? 'desktop' : null;
+          if (!baseName) {
+            valid.sort((a, b) => (Number(a[1]?.viewport?.width) || 0) - (Number(b[1]?.viewport?.width) || 0));
+            baseName = valid[valid.length - 1][0];
+          }
+          const baseLayout = stored[baseName];
+          if (baseLayout) {
+            const baseGrid = indexBySelector(baseLayout.gridLayouts);
+            const baseFlex = indexBySelector(baseLayout.flexLayouts);
+            const baseVis = indexBySelector(baseLayout.visibilityStates);
+            const baseContainers = indexBySelector(baseLayout.layoutContainers);
+
+            // Best-effort: infer centered containers (Tailwind max-w-* + mx-auto) and emit margin:auto.
+            // This fixes cases where computed auto margins are resolved into symmetric px or dropped in the blueprint.
+            try {
+              const containers = Array.isArray(baseLayout.layoutContainers) ? baseLayout.layoutContainers : [];
+              const centered = [];
+
+              for (const c of containers) {
+                if (!c?.selector) continue;
+                const uid = selectorToUid.get(c.selector);
+                if (!uid) continue;
+                if (baseHasMargin.has(uid)) continue;
+
+                const maxW = normalizeCssValue(c?.sizing?.maxWidth);
+                if (!maxW || maxW === 'none' || maxW === 'auto') continue;
+
+                const mar = normalizeBoxShorthand(c?.sizing?.margin);
+                if (!mar) continue;
+                const parts = mar.split(' ').filter(Boolean);
+                if (parts.length !== 4) continue;
+                const right = parts[1];
+                const left = parts[3];
+                const rpx = parsePx(right);
+                const lpx = parsePx(left);
+                if (rpx === null || lpx === null) continue;
+                if (Math.abs(rpx - lpx) > 2) continue;
+                if (Math.max(rpx, lpx) < 16) continue;
+
+                centered.push({ uid, margin: `${parts[0]} auto ${parts[2]} auto` });
+              }
+
+              if (centered.length > 0) {
+                rules.push(``);
+                rules.push(`/* Inferred centered containers (max-width + symmetric margins) */`);
+                for (const entry of centered) {
+                  rules.push(`${selectorFor(entry.uid)} {`);
+                  rules.push(`  margin: ${entry.margin};`);
+                  rules.push(`}`);
+                }
+              }
+            } catch {
+              // ignore
+            }
+
+            // Generate from larger max-width to smaller so smaller viewports can override later.
+            const targets = valid
+              .filter(([k]) => k !== baseName)
+              .map(([k, v]) => ({ name: k, layout: v, maxWidth: inferViewportMaxWidthPx(k, v, options) }))
+              .filter((t) => Number.isFinite(t.maxWidth) && t.maxWidth > 0)
+              .sort((a, b) => b.maxWidth - a.maxWidth);
+
+            const maxRulesPerViewport = Number.isFinite(options.responsiveMaxRulesPerViewport)
+              ? options.responsiveMaxRulesPerViewport
+              : 90;
+
+            for (const target of targets) {
+              const layout = target.layout;
+              const maxWidth = target.maxWidth;
+              const viewportName = target.name;
+
+              const overridesByUid = new Map(); // uid -> Map(prop -> value)
+
+              const setOverride = (uid, prop, value) => {
+                if (!uid || !prop) return;
+                if (value === null || value === undefined) return;
+                const v = String(value).trim();
+                if (!v) return;
+
+                let m = overridesByUid.get(uid);
+                if (!m) {
+                  m = new Map();
+                  overridesByUid.set(uid, m);
+                }
+
+                if (prop === 'display') {
+                  const existing = m.get(prop);
+                  // Don't overwrite display:none with display:flex/block inside the same media query.
+                  if (String(existing || '').trim() === 'none' && v !== 'none') return;
+                }
+
+                m.set(prop, v);
+              };
+
+              const grid = Array.isArray(layout.gridLayouts) ? layout.gridLayouts.slice() : [];
+              grid.sort((a, b) => rectArea(b.rect) - rectArea(a.rect));
+              for (const item of grid.slice(0, 60)) {
+                if (!item?.selector) continue;
+                const uid = selectorToUid.get(item.selector);
+                if (!uid) continue;
+
+                const baseItem = baseGrid.get(item.selector);
+                const colsOut = normalizeGridTemplateColumns(
+                  item.gridTemplateColumns,
+                  item.rect,
+                  item.columnGap || item.gap,
+                  options
+                );
+                const baseColsOut = baseItem
+                  ? normalizeGridTemplateColumns(
+                      baseItem.gridTemplateColumns,
+                      baseItem.rect,
+                      baseItem.columnGap || baseItem.gap,
+                      options
+                    )
+                  : null;
+                const cols = normalizeCssValue(colsOut);
+                const rows = normalizeCssValue(item.gridTemplateRows);
+                const flow = normalizeCssValue(item.gridAutoFlow);
+                const gap = normalizeCssValue(item.gap);
+                const colGap = normalizeCssValue(item.columnGap);
+                const rowGap = normalizeCssValue(item.rowGap);
+
+                const changed =
+                  !baseItem ||
+                  normalizeCssValue(baseColsOut || baseItem.gridTemplateColumns) !== cols ||
+                  normalizeCssValue(baseItem.gridTemplateRows) !== rows ||
+                  normalizeCssValue(baseItem.gridAutoFlow) !== flow ||
+                  normalizeCssValue(baseItem.gap) !== gap ||
+                  normalizeCssValue(baseItem.columnGap) !== colGap ||
+                  normalizeCssValue(baseItem.rowGap) !== rowGap;
+
+                if (!changed) continue;
+
+                setOverride(uid, 'display', 'grid');
+                if (cols) setOverride(uid, 'gridTemplateColumns', colsOut);
+                if (rows) setOverride(uid, 'gridTemplateRows', item.gridTemplateRows);
+                if (flow) setOverride(uid, 'gridAutoFlow', item.gridAutoFlow);
+                if (gap && gap !== 'normal') setOverride(uid, 'gap', item.gap);
+                if (colGap && colGap !== 'normal') setOverride(uid, 'columnGap', item.columnGap);
+                if (rowGap && rowGap !== 'normal') setOverride(uid, 'rowGap', item.rowGap);
+
+                if (overridesByUid.size >= maxRulesPerViewport) break;
+              }
+
+              const flex = Array.isArray(layout.flexLayouts) ? layout.flexLayouts.slice() : [];
+              flex.sort((a, b) => rectArea(b.rect) - rectArea(a.rect));
+              for (const item of flex.slice(0, 120)) {
+                if (overridesByUid.size >= maxRulesPerViewport) break;
+                if (!item?.selector) continue;
+                const uid = selectorToUid.get(item.selector);
+                if (!uid) continue;
+
+                const baseItem = baseFlex.get(item.selector);
+                const dir = normalizeCssValue(item.flexDirection);
+                const wrap = normalizeCssValue(item.flexWrap);
+                const justify = normalizeCssValue(item.justifyContent);
+                const align = normalizeCssValue(item.alignItems);
+                const gap = normalizeCssValue(item.gap);
+
+                const changed =
+                  !baseItem ||
+                  normalizeCssValue(baseItem.flexDirection) !== dir ||
+                  normalizeCssValue(baseItem.flexWrap) !== wrap ||
+                  normalizeCssValue(baseItem.justifyContent) !== justify ||
+                  normalizeCssValue(baseItem.alignItems) !== align ||
+                  normalizeCssValue(baseItem.gap) !== gap;
+
+                if (!changed) continue;
+
+                setOverride(uid, 'display', 'flex');
+                if (dir) setOverride(uid, 'flexDirection', item.flexDirection);
+                if (wrap) setOverride(uid, 'flexWrap', item.flexWrap);
+                if (justify) setOverride(uid, 'justifyContent', item.justifyContent);
+                if (align) setOverride(uid, 'alignItems', item.alignItems);
+                if (gap && gap !== 'normal') setOverride(uid, 'gap', item.gap);
+              }
+
+              // Container spacing overrides (padding/margin/maxWidth): only when we can compare to base.
+              const maxContainerUids = Number.isFinite(options.responsiveMaxContainerUids)
+                ? options.responsiveMaxContainerUids
+                : 24;
+              let containerSeen = 0;
+
+              const containers = Array.isArray(layout.layoutContainers) ? layout.layoutContainers.slice() : [];
+              containers.sort((a, b) => rectArea(b.rect) - rectArea(a.rect));
+              for (const item of containers.slice(0, 80)) {
+                if (overridesByUid.size >= maxRulesPerViewport) break;
+                if (containerSeen >= maxContainerUids) break;
+                if (!item?.selector) continue;
+                const uid = selectorToUid.get(item.selector);
+                if (!uid) continue;
+
+                const baseItem = baseContainers.get(item.selector);
+                if (!baseItem) continue; // conservative: avoid guessing without a baseline
+
+                const had = overridesByUid.has(uid);
+
+                const pad = normalizeBoxShorthand(item?.sizing?.padding);
+                const basePad = normalizeBoxShorthand(baseItem?.sizing?.padding);
+                if (pad && pad !== basePad && pad !== '0px 0px 0px 0px') {
+                  setOverride(uid, 'padding', pad);
+                }
+
+                const mar = normalizeBoxShorthand(item?.sizing?.margin);
+                const baseMar = normalizeBoxShorthand(baseItem?.sizing?.margin);
+                // Margin changes are often fragile; keep this conservative.
+                if (mar && baseMar && mar !== baseMar && mar !== '0px 0px 0px 0px') {
+                  setOverride(uid, 'margin', mar);
+                }
+
+                const maxW = normalizeCssValue(item?.sizing?.maxWidth);
+                const baseMaxW = normalizeCssValue(baseItem?.sizing?.maxWidth);
+                if (maxW && maxW !== baseMaxW && maxW !== 'auto') {
+                  setOverride(uid, 'maxWidth', maxW);
+                } else if (baseMaxW && baseMaxW !== 'none' && maxW === 'none') {
+                  setOverride(uid, 'maxWidth', 'none');
+                }
+
+                if (!had && overridesByUid.has(uid)) containerSeen += 1;
+              }
+
+              const vis = Array.isArray(layout.visibilityStates) ? layout.visibilityStates : [];
+              for (const item of vis) {
+                if (overridesByUid.size >= maxRulesPerViewport) break;
+                if (!item?.selector) continue;
+                const uid = selectorToUid.get(item.selector);
+                if (!uid) continue;
+
+                // High-signal: show/hide changes (tailwind hidden/md:flex patterns).
+                const baseItem = baseVis.get(item.selector);
+                const display = normalizeCssValue(item.display);
+                const baseDisplay = baseItem ? normalizeCssValue(baseItem.display) : '';
+
+                if (display === 'none') {
+                  setOverride(uid, 'display', 'none');
+                } else if (baseItem && baseDisplay !== display) {
+                  setOverride(uid, 'display', item.display);
+                }
+
+                // Keep these conservative: only change when we have a base reference.
+                if (baseItem) {
+                  const visibility = normalizeCssValue(item.visibility);
+                  const baseVisibility = normalizeCssValue(baseItem.visibility);
+                  if (visibility && baseVisibility && visibility !== baseVisibility) {
+                    setOverride(uid, 'visibility', item.visibility);
+                  }
+
+                  const opacity = normalizeCssValue(item.opacity);
+                  const baseOpacity = normalizeCssValue(baseItem.opacity);
+                  if (opacity && baseOpacity && opacity !== baseOpacity) {
+                    setOverride(uid, 'opacity', item.opacity);
+                  }
+                }
+              }
+
+              if (overridesByUid.size === 0) continue;
+
+              // Emit @media block.
+              rules.push(``);
+              rules.push(`/* Responsive overrides: ${viewportName} */`);
+              rules.push(`@media (max-width: ${maxWidth}px) {`);
+
+              const uidEntries = Array.from(overridesByUid.entries()).sort((a, b) => {
+                const an = parseInt(String(a[0]).replace(/^\D+/, ''), 10);
+                const bn = parseInt(String(b[0]).replace(/^\D+/, ''), 10);
+                if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+                return String(a[0]).localeCompare(String(b[0]));
+              });
+
+              const propPriority = [
+                'display',
+                'flexDirection',
+                'flexWrap',
+                'justifyContent',
+                'alignItems',
+                'gridTemplateColumns',
+                'gridTemplateRows',
+                'gridAutoFlow',
+                'columnGap',
+                'rowGap',
+                'gap',
+                'visibility',
+                'opacity'
+              ];
+              const propOrder = (prop) => {
+                const idx = propPriority.indexOf(prop);
+                return idx === -1 ? 999 : idx;
+              };
+
+              for (const [uid, propMap] of uidEntries) {
+                const decls = [];
+                const props = Array.from(propMap.entries())
+                  .sort((a, b) => propOrder(a[0]) - propOrder(b[0]) || String(a[0]).localeCompare(String(b[0])));
+
+                for (const [prop, value] of props) {
+                  pushDecl(decls, prop, value);
+                }
+
+                if (!decls.length) continue;
+                rules.push(`  ${selectorFor(uid)} {`);
+                rules.push(`    ${decls.join('\n    ')}`);
+                rules.push(`  }`);
+              }
+
+              rules.push(`}`);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore: responsive evidence is optional.
+        debug('Responsive CSS generation failed:', e?.message || String(e));
       }
     }
 

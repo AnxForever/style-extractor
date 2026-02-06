@@ -122,13 +122,20 @@
     return true;
   }
 
-  function readBox(s, prefix) {
+  function readBox(s, prefix, options = {}) {
+    const allowAuto = options && options.allowAuto === true;
     const top = s[`${prefix}Top`];
     const right = s[`${prefix}Right`];
     const bottom = s[`${prefix}Bottom`];
     const left = s[`${prefix}Left`];
 
-    if (![top, right, bottom, left].some(isNonZero)) return null;
+    const hasMeaningful = [top, right, bottom, left].some((v) => {
+      if (isNonZero(v)) return true;
+      if (!allowAuto) return false;
+      return String(v || '').trim() === 'auto';
+    });
+
+    if (!hasMeaningful) return null;
     return { top, right, bottom, left };
   }
 
@@ -191,6 +198,11 @@
       };
     }
 
+    // Critical for fidelity: clipping (border-radius + overflow hidden) and scroll containers.
+    if (s.overflow && s.overflow !== 'visible') layout.overflow = s.overflow;
+    if (s.overflowX && s.overflowX !== 'visible' && s.overflowX !== s.overflow) layout.overflowX = s.overflowX;
+    if (s.overflowY && s.overflowY !== 'visible' && s.overflowY !== s.overflow) layout.overflowY = s.overflowY;
+
     if (s.alignSelf && s.alignSelf !== 'auto') layout.alignSelf = s.alignSelf;
     if (s.order && s.order !== '0') layout.order = s.order;
 
@@ -222,7 +234,8 @@
 
     const spacing = {};
     const padding = readBox(s, 'padding');
-    const margin = readBox(s, 'margin');
+    // Auto margins are meaningful for centering containers.
+    const margin = readBox(s, 'margin', { allowAuto: true });
     if (padding) spacing.padding = padding;
     if (margin) spacing.margin = margin;
     if (isNonZero(s.gap)) spacing.gap = s.gap;
@@ -252,6 +265,16 @@
   }
 
   function extractVisual(s) {
+    const isZeroTimeList = (value) => {
+      if (!value) return true;
+      const parts = String(value)
+        .split(',')
+        .map(v => v.trim())
+        .filter(Boolean);
+      if (parts.length === 0) return true;
+      return parts.every(v => v === '0s' || v === '0ms' || v === '0');
+    };
+
     const borderSide = (width, style, color) => {
       if (!isNonZero(width)) return null;
       if (!style || style === 'none') return null;
@@ -297,13 +320,38 @@
       transform: s.transform && s.transform !== 'none' ? s.transform : null,
       filter: s.filter && s.filter !== 'none' ? s.filter : null,
       backdropFilter: s.backdropFilter && s.backdropFilter !== 'none' ? s.backdropFilter : null,
-      mixBlendMode: s.mixBlendMode && s.mixBlendMode !== 'normal' ? s.mixBlendMode : null
+      mixBlendMode: s.mixBlendMode && s.mixBlendMode !== 'normal' ? s.mixBlendMode : null,
+      cursor: s.cursor && s.cursor !== 'auto' ? s.cursor : null,
+      transition: null
     };
 
     if (visual.backgroundImage) {
       visual.backgroundSize = s.backgroundSize && s.backgroundSize !== 'auto' ? s.backgroundSize : null;
       visual.backgroundPosition = s.backgroundPosition && s.backgroundPosition !== '0% 0%' ? s.backgroundPosition : null;
       visual.backgroundRepeat = s.backgroundRepeat && s.backgroundRepeat !== 'repeat' ? s.backgroundRepeat : null;
+    }
+
+    // Replaced element rendering (images/videos): important for cards and hero media.
+    if (s.objectFit && s.objectFit !== 'fill') {
+      visual.objectFit = s.objectFit;
+    }
+    if (s.objectPosition) {
+      const op = String(s.objectPosition).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (op && op !== '50% 50%' && op !== 'center' && op !== 'center center') {
+        visual.objectPosition = s.objectPosition;
+      }
+    }
+    if (s.aspectRatio && s.aspectRatio !== 'auto') {
+      visual.aspectRatio = s.aspectRatio;
+    }
+
+    if (!isZeroTimeList(s.transitionDuration)) {
+      visual.transition = {
+        property: s.transitionProperty,
+        duration: s.transitionDuration,
+        timingFunction: s.transitionTimingFunction,
+        delay: isZeroTimeList(s.transitionDelay) ? null : s.transitionDelay
+      };
     }
 
     if (visual.backgroundColor === 'transparent' || visual.backgroundColor === 'rgba(0, 0, 0, 0)') {
@@ -1822,6 +1870,62 @@
 
     const breakpoints = responsive.breakpoints || null;
     let variants = null;
+    let viewportWorkflow = responsive.viewportWorkflow || null;
+
+    // Provide agent-friendly tool-call serialization for the viewport workflow.
+    // This mirrors the interaction workflow "serialized.steps" format so runners can execute it sequentially.
+    function serializeViewportWorkflow(workflow) {
+      if (!workflow || typeof workflow !== 'object') return null;
+      const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+      if (!steps.length) return null;
+
+      const serialized = [];
+      let serializedCount = 0;
+      let serializedMcp = 0;
+      let serializedEval = 0;
+
+      for (const step of steps) {
+        if (step?.mcpTool?.name) {
+          serialized.push({
+            step: step.step ?? null,
+            tool: step.mcpTool.name,
+            params: step.mcpTool.params || {},
+            action: step.action || null,
+            viewport: step.viewport || null
+          });
+          serializedCount += 1;
+          serializedMcp += 1;
+        }
+        if (step?.script) {
+          serialized.push({
+            step: step.step ?? null,
+            tool: 'mcp__chrome-devtools__evaluate_script',
+            params: { function: step.script },
+            action: step.action || null,
+            viewport: step.viewport || null
+          });
+          serializedCount += 1;
+          serializedEval += 1;
+        }
+      }
+
+      return {
+        total: serializedCount,
+        mcp: serializedMcp,
+        eval: serializedEval,
+        steps: serialized,
+        note: 'Tool call list ready for sequential execution (viewport workflow).'
+      };
+    }
+
+    if (viewportWorkflow && typeof viewportWorkflow === 'object' && Array.isArray(viewportWorkflow.steps)) {
+      const existing = viewportWorkflow.serialized || null;
+      const serialized = existing || serializeViewportWorkflow(viewportWorkflow);
+      viewportWorkflow = {
+        ...viewportWorkflow,
+        serialized: serialized || existing || null
+      };
+    }
 
     if (window.__seResponsive?.getAllStoredLayouts) {
       try {
@@ -1871,7 +1975,7 @@
     return {
       breakpoints: breakpoints?.breakpoints || breakpoints || null,
       named: breakpoints?.named || null,
-      viewportWorkflow: responsive.viewportWorkflow || null,
+      viewportWorkflow,
       responsiveDoc: responsive.responsiveDoc || null,
       variants
     };
@@ -2022,6 +2126,19 @@
       meta: blueprint.meta || null,
       summary: blueprint.summary || null,
       tokens,
+      // Put responsive early so it survives maxChars truncation.
+      responsive: responsive
+        ? {
+            breakpoints: responsive.breakpoints || null,
+            named: responsive.named || null,
+            variants: responsive.variants
+              ? {
+                  layouts: responsive.variants.layouts || null,
+                  comparisons: (responsive.variants.comparisons || []).slice(0, maxComparisons)
+                }
+              : null
+          }
+        : null,
       sections: sections.map((s) => ({
         id: s.id,
         name: s.name,
@@ -2045,21 +2162,9 @@
         accessibleRole: t.accessibleRole || null,
         accessibleName: t.accessibleName || null,
         availableStates: t.availableStates || null,
-        keyChanges: t.keyChanges || null,
+        keyChanges: Array.isArray(t.keyChanges) ? t.keyChanges.slice(0, 8) : (t.keyChanges || null),
         priority: t.priority || null
-      })),
-      responsive: responsive
-        ? {
-            breakpoints: responsive.breakpoints || null,
-            named: responsive.named || null,
-            variants: responsive.variants
-              ? {
-                  layouts: responsive.variants.layouts || null,
-                  comparisons: (responsive.variants.comparisons || []).slice(0, maxComparisons)
-                }
-              : null
-          }
-        : null
+      }))
     };
 
     const lines = [];
