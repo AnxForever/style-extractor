@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style Extractor v3.0 - E2E Test</title>
+  <style>
+    :root {
+      --color-primary: #0066cc;
+      --color-secondary: #666666;
+      --color-background: #ffffff;
+      --color-surface: #f5f5f5;
+      --color-text: #333333;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-background);
+      color: var(--color-text);
+      line-height: 1.5;
+    }
+
+    /* Header */
+    header {
+      background: var(--color-primary);
+      color: white;
+      padding: var(--spacing-md) var(--spacing-lg);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    /* Navigation */
+    nav {
+      display: flex;
+      gap: var(--spacing-md);
+    }
+
+    nav a {
+      color: white;
+      text-decoration: none;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    nav a:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.18);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .icon-btn:hover {
+      background: rgba(255,255,255,0.28);
+      transform: translateY(-1px);
+    }
+    .icon-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Main */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--spacing-lg);
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 60px var(--spacing-lg);
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 12px;
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .hero h1 {
+      font-size: 48px;
+      margin-bottom: var(--spacing-md);
+    }
+
+    .hero p {
+      font-size: 18px;
+      opacity: 0.9;
+    }
+
+    /* Cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: var(--spacing-lg);
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .card {
+      background: var(--color-surface);
+      border-radius: 8px;
+      padding: var(--spacing-lg);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .card h3 {
+      margin-bottom: var(--spacing-sm);
+      color: var(--color-primary);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      padding: var(--spacing-sm) var(--spacing-md);
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #0052a3;
+    }
+
+    .btn-secondary {
+      background: var(--color-secondary);
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: var(--spacing-md);
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: var(--spacing-sm);
+      font-weight: 500;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: var(--spacing-sm);
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(0,102,204,0.2);
+    }
+
+    /* Sidebar */
+    aside {
+      background: var(--color-surface);
+      padding: var(--spacing-lg);
+      border-radius: 8px;
+    }
+
+    /* Footer */
+    footer {
+      background: #333;
+      color: white;
+      padding: var(--spacing-lg);
+      text-align: center;
+      margin-top: var(--spacing-lg);
+    }
+
+    /* Test Results */
+    #test-results {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: var(--spacing-lg);
+      border-radius: 8px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: var(--spacing-lg);
+    }
+
+    .test-pass { color: #4ec9b0; }
+    .test-fail { color: #f14c4c; }
+    .test-info { color: #569cd6; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      header {
+        flex-direction: column;
+        gap: var(--spacing-md);
+      }
+      .hero h1 {
+        font-size: 32px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      nav {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header role="banner">
+    <div class="logo">StyleKit</div>
+    <nav role="navigation" aria-label="Main navigation">
+      <a href="#home">Home</a>
+      <a href="#features">Features</a>
+      <a href="#docs">Docs</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <button class="icon-btn" aria-label="Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+    </button>
+  </header>
+
+  <main role="main">
+    <section class="hero">
+      <h1>Style Extractor v3.0</h1>
+      <p>Extract styles, structure, and generate framework code from any website</p>
+    </section>
+
+    <section class="cards">
+      <article class="card">
+        <h3>Structure Extraction</h3>
+        <p>Extract DOM tree, layout patterns, breakpoints, and semantic structure.</p>
+        <button class="btn">Learn More</button>
+      </article>
+
+      <article class="card">
+        <h3>Code Generation</h3>
+        <p>Generate HTML skeleton, React TSX, and Vue SFC components.</p>
+        <button class="btn btn-secondary">View Examples</button>
+      </article>
+
+      <article class="card">
+        <h3>Standard Export</h3>
+        <p>Export to standard schema format for style collection websites.</p>
+        <button class="btn">Export Now</button>
+      </article>
+    </section>
+
+    <section>
+      <h2>Contact Form</h2>
+      <form>
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" placeholder="Your name">
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" placeholder="your@email.com">
+        </div>
+        <button type="submit" class="btn">Submit</button>
+      </form>
+    </section>
+
+    <aside role="complementary">
+      <h3>Quick Links</h3>
+      <ul>
+        <li><a href="#docs">Documentation</a></li>
+        <li><a href="#api">API Reference</a></li>
+        <li><a href="#github">GitHub</a></li>
+      </ul>
+    </aside>
+
+    <section>
+      <h2>E2E Test</h2>
+      <button class="btn" onclick="runTests()">Run Tests</button>
+      <div id="test-results">Click "Run Tests" to start...</div>
+    </section>
+  </main>
+
+  <footer role="contentinfo">
+    <p>Style Extractor v3.0 - MIT License</p>
+  </footer>
+
+  <!-- Load Scripts -->
+  <script src="../scripts/utils.js"></script>
+  <script src="../scripts/structure-extract.js"></script>
+  <script src="../scripts/css-parser.js"></script>
+  <script src="../scripts/component-detect.js"></script>
+  <script src="../scripts/state-capture.js"></script>
+  <script src="../scripts/ai-semantic.js"></script>
+  <script src="../scripts/a11y-tree.js"></script>
+  <script src="../scripts/responsive-extract.js"></script>
+  <script src="../scripts/stylekit-adapter.js"></script>
+  <script src="../scripts/theme-detect.js"></script>
+  <script src="../scripts/motion-tools.js"></script>
+  <script src="../scripts/motion-enhanced.js"></script>
+  <script src="../scripts/motion-assoc.js"></script>
+  <script src="../scripts/screenshot-helper.js"></script>
+  <script src="../scripts/library-detect.js"></script>
+  <script src="../scripts/code-generator.js"></script>
+  <script src="../scripts/replica-blueprint.js"></script>
+  <script src="../scripts/format-converter.js"></script>
+  <script src="../scripts/export-schema.js"></script>
+  <script src="../scripts/incremental.js"></script>
+  <script src="../scripts/multi-page.js"></script>
+  <script src="../scripts/registry.js"></script>
+
+  <script>
+    async function runTests() {
+      const output = document.getElementById('test-results');
+      output.innerHTML = '<span class="test-info">Running tests...</span>\n\n';
+
+      const results = {
+        timestamp: new Date().toISOString(),
+        url: location.href,
+        title: document.title,
+        tests: [],
+        summary: { passed: 0, failed: 0 }
+      };
+
+      function log(msg, type = 'info') {
+        const span = document.createElement('span');
+        span.className = `test-${type}`;
+        span.textContent = msg + '\n';
+        output.appendChild(span);
+        output.scrollTop = output.scrollHeight;
+      }
+
+      function test(name, fn) {
+        try {
+          const result = fn();
+          const passed = result.success !== false;
+          results.tests.push({
+            name,
+            passed,
+            result: passed ? result : null,
+            error: !passed ? result.error : null
+          });
+          if (passed) {
+            results.summary.passed++;
+            log(`[PASS] ${name}`, 'pass');
+          } else {
+            results.summary.failed++;
+            log(`[FAIL] ${name}: ${result.error}`, 'fail');
+          }
+          return result;
+        } catch (e) {
+          results.tests.push({ name, passed: false, error: e.message });
+          results.summary.failed++;
+          log(`[FAIL] ${name}: ${e.message}`, 'fail');
+          return { success: false, error: e.message };
+        }
+      }
+
+      // Test 1: Scripts loaded
+      log('\n=== Script Loading ===', 'info');
+      test('__seStructure loaded', () => ({
+        success: !!window.__seStructure?.installed
+      }));
+      test('__seCodeGen loaded', () => ({
+        success: !!window.__seCodeGen?.installed
+      }));
+      test('__seExport loaded', () => ({
+        success: !!window.__seExport?.installed
+      }));
+      test('__seComponents loaded', () => ({
+        success: !!window.__seComponents?.installed
+      }));
+      test('__seStyleKit loaded', () => ({
+        success: !!window.__seStyleKit?.installed
+      }));
+      test('__seBlueprint loaded', () => ({
+        success: !!window.__seBlueprint?.installed
+      }));
+
+      // Test 2: Structure extraction
+      log('\n=== Structure Extraction ===', 'info');
+      let structureData = null;
+
+      test('extractDOM()', () => {
+        const dom = window.__seStructure.extractDOM({ maxDepth: 5 });
+        return { success: !!dom?.tree, nodeCount: countNodes(dom?.tree) };
+      });
+
+      test('analyzeLayoutPatterns()', () => {
+        const layout = window.__seStructure.analyzeLayoutPatterns();
+        return { success: !!layout?.patterns, summary: layout?.summary };
+      });
+
+      test('extractBreakpoints()', () => {
+        const bp = window.__seStructure.extractBreakpoints();
+        return { success: true, count: bp?.count };
+      });
+
+      test('analyzeSemanticStructure()', () => {
+        const semantic = window.__seStructure.analyzeSemanticStructure();
+        return { success: !!semantic?.structure, summary: semantic?.summary };
+      });
+
+      test('extract() - full', () => {
+        structureData = window.__seStructure.extract();
+        return { success: !!structureData?.dom && !!structureData?.layout };
+      });
+
+      // Test 2.5: Replica blueprint
+      log('\n=== Replica Blueprint ===', 'info');
+      test('blueprint build()', () => {
+        if (!window.__seBlueprint?.installed) {
+          return { success: false, error: 'replica-blueprint.js not loaded' };
+        }
+        const componentsData = window.__seComponents?.generateReport?.();
+        const blueprint = window.__seBlueprint.build({
+          structure: structureData,
+          components: componentsData
+        });
+        return {
+          success: !!blueprint?.tree,
+          summary: blueprint?.summary,
+          relationships: Object.keys(blueprint?.relationships || {}),
+          interactionTargets: blueprint?.interaction?.targets?.length || 0,
+          responsiveVariants: blueprint?.responsive?.variants ? Object.keys(blueprint.responsive.variants.layouts || {}).length : 0
+        };
+      });
+
+      // Test 3: Code generation
+      log('\n=== Code Generation ===', 'info');
+      let codeData = null;
+
+      test('toHTMLSkeleton()', () => {
+        const html = window.__seCodeGen.toHTMLSkeleton(structureData);
+        return { success: html?.includes('<!DOCTYPE html'), length: html?.length };
+      });
+
+      test('toReactComponents()', () => {
+        const react = window.__seCodeGen.toReactComponents(structureData);
+        return { success: !react.error, fileCount: Object.keys(react.files || {}).length };
+      });
+
+      test('toVueComponents()', () => {
+        const vue = window.__seCodeGen.toVueComponents(structureData);
+        return { success: !vue.error, fileCount: Object.keys(vue.files || {}).length };
+      });
+
+      test('generate(all)', () => {
+        codeData = window.__seCodeGen.generate(structureData, 'all');
+        return { success: !!codeData?.html && !!codeData?.react && !!codeData?.vue };
+      });
+
+      // Test 4: Export
+      log('\n=== Standard Export ===', 'info');
+
+      test('toStyleCollectionFormat()', () => {
+        const data = { meta: { url: location.href }, structure: structureData, code: codeData };
+        const schema = window.__seExport.toStyleCollectionFormat(data);
+        return { success: !!schema?.$schema && !!schema?.meta?.id };
+      });
+
+      test('validateSchema()', () => {
+        const data = { meta: { url: location.href }, structure: structureData, code: codeData };
+        const schema = window.__seExport.toStyleCollectionFormat(data);
+        const validation = window.__seExport.validateSchema(schema);
+        return { success: validation.errors.length === 0, score: validation.score };
+      });
+
+      test('export() - full', () => {
+        const exportData = window.__seExport.export();
+        return {
+          success: !!exportData?.schema,
+          score: exportData?.validation?.score,
+          hasBlueprint: !!exportData?.schema?.blueprint
+        };
+      });
+
+      // Summary
+      log('\n========================================', 'info');
+      log(`Results: ${results.summary.passed}/${results.tests.length} passed`,
+          results.summary.failed === 0 ? 'pass' : 'fail');
+      log('========================================', 'info');
+
+      // Output JSON
+      log('\n=== Full Results (JSON) ===', 'info');
+      log(JSON.stringify(results, null, 2), 'info');
+    }
+
+    function countNodes(node) {
+      if (!node) return 0;
+      let count = 1;
+      if (node.children) {
+        for (const child of node.children) {
+          count += countNodes(child);
+        }
+      }
+      return count;
+    }
+  </script>
+</body>
+</html>

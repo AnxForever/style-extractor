@@ -1,0 +1,185 @@
+{
+  "$schema": "https://stylekit.dev/schema/style-collection-v1.json",
+  "version": "1.0.0",
+  "meta": {
+    "id": "example-com",
+    "name": "Example Site Style",
+    "description": "Style extracted from example.com",
+    "source": {
+      "url": "https://example.com",
+      "domain": "example.com",
+      "extractedAt": "2024-01-01T00:00:00.000Z"
+    },
+    "tags": ["light-mode", "responsive", "grid-layout"],
+    "thumbnail": null
+  },
+  "tokens": {
+    "colors": {
+      "semantic": {
+        "primary": "#0066cc",
+        "secondary": "#666666",
+        "accent": "#ff6600",
+        "background": "#ffffff",
+        "surface": "#f5f5f5",
+        "text": "#333333",
+        "textMuted": "#666666",
+        "border": "#e0e0e0",
+        "error": "#cc0000",
+        "success": "#00cc66",
+        "warning": "#ffcc00"
+      },
+      "palette": {},
+      "raw": {}
+    },
+    "typography": {
+      "fontFamily": {
+        "primary": "Inter, system-ui, sans-serif",
+        "secondary": "Georgia, serif",
+        "mono": "JetBrains Mono, monospace"
+      },
+      "fontSize": {
+        "xs": "12px",
+        "sm": "14px",
+        "base": "16px",
+        "lg": "18px",
+        "xl": "24px",
+        "2xl": "32px",
+        "3xl": "48px"
+      },
+      "fontWeight": {
+        "normal": "400",
+        "medium": "500",
+        "bold": "700"
+      },
+      "lineHeight": {
+        "tight": "1.2",
+        "normal": "1.5",
+        "relaxed": "1.75"
+      }
+    },
+    "spacing": {
+      "xs": "4px",
+      "sm": "8px",
+      "md": "16px",
+      "lg": "24px",
+      "xl": "32px",
+      "2xl": "48px",
+      "3xl": "64px"
+    },
+    "motion": {
+      "duration": {
+        "fast": "150ms",
+        "normal": "300ms",
+        "slow": "500ms"
+      },
+      "easing": {
+        "default": "ease",
+        "in": "ease-in",
+        "out": "ease-out",
+        "inOut": "ease-in-out"
+      },
+      "keyframes": {}
+    }
+  },
+  "structure": {
+    "layout": {
+      "primaryType": "flex",
+      "gridCount": 2,
+      "flexCount": 15
+    },
+    "landmarks": [
+      {
+        "role": "banner",
+        "selector": "header",
+        "label": null
+      },
+      {
+        "role": "navigation",
+        "selector": "nav.main-nav",
+        "label": "Main navigation"
+      },
+      {
+        "role": "main",
+        "selector": "main",
+        "label": null
+      },
+      {
+        "role": "contentinfo",
+        "selector": "footer",
+        "label": null
+      }
+    ],
+    "breakpoints": {
+      "sm": "640px",
+      "md": "768px",
+      "lg": "1024px",
+      "xl": "1280px"
+    }
+  },
+  "components": {
+    "button": {
+      "count": 5,
+      "examples": [
+        {
+          "selector": "button.btn-primary",
+          "styles": {
+            "backgroundColor": "#0066cc",
+            "color": "#ffffff",
+            "padding": "12px 24px",
+            "borderRadius": "8px"
+          }
+        }
+      ]
+    },
+    "card": {
+      "count": 8,
+      "examples": [
+        {
+          "selector": ".card",
+          "styles": {
+            "backgroundColor": "#ffffff",
+            "borderRadius": "12px",
+            "boxShadow": "0 2px 8px rgba(0,0,0,0.1)",
+            "padding": "24px"
+          }
+        }
+      ]
+    },
+    "navigation": {
+      "count": 1,
+      "examples": [
+        {
+          "selector": "nav.main-nav",
+          "styles": {
+            "display": "flex",
+            "gap": "24px"
+          }
+        }
+      ]
+    }
+  },
+  "code": {
+    "html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Example Site</title>\n</head>\n<body>\n  <header>\n    <nav></nav>\n  </header>\n  <main>\n    <section class=\"hero\"></section>\n    <section class=\"content\"></section>\n  </main>\n  <footer></footer>\n</body>\n</html>",
+    "react": {
+      "Page.tsx": "// Page component",
+      "Header.tsx": "// Header component",
+      "Footer.tsx": "// Footer component"
+    },
+    "vue": {
+      "Page.vue": "<!-- Page component -->",
+      "Header.vue": "<!-- Header component -->",
+      "Footer.vue": "<!-- Footer component -->"
+    }
+  },
+  "evidence": {
+    "screenshots": [],
+    "cssFiles": [],
+    "extractionLog": [
+      {
+        "phase": "extraction",
+        "timestamp": "2024-01-01T00:00:00.000Z",
+        "url": "https://example.com"
+      }
+    ]
+  }
+}

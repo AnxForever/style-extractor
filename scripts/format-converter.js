@@ -65,10 +65,18 @@
 
   function parseColor(color) {
     if (!color) return null;
+    if (typeof color === 'object') {
+      if (typeof color.value === 'string') {
+        color = color.value;
+      } else {
+        return null;
+      }
+    }
+    if (typeof color !== 'string') return null;
     // Handle transparent keyword
     if (color === 'transparent') return 'transparent';
     const hex = rgbToHex(color);
-    return hex.startsWith('#') ? hex : color;
+    return typeof hex === 'string' && hex.startsWith('#') ? hex : color;
   }
 
   function parseDuration(duration) {

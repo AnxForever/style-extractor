@@ -343,11 +343,22 @@
 
   function generateId(url) {
     try {
-      const hostname = new URL(url).hostname;
-      return hostname.replace(/\./g, '-').replace(/^www-/, '');
+      const parsed = new URL(url);
+      const hostname = parsed.hostname || '';
+      if (hostname) {
+        return hostname.replace(/\./g, '-').replace(/^www-/, '');
+      }
+
+      // file:// URLs do not expose hostnames. Build a stable local id from file name.
+      if (parsed.protocol === 'file:') {
+        const fileName = (parsed.pathname || '').split('/').filter(Boolean).pop() || 'local-file';
+        return `file-${fileName.replace(/\.[a-z0-9]+$/i, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'local-file'}`;
+      }
     } catch {
-      return 'extracted-' + Date.now();
+      // Ignore and fallback below.
     }
+
+    return 'extracted-' + Date.now();
   }
 
   // Generate safe JS identifier from id (must start with letter, only alphanumeric)
