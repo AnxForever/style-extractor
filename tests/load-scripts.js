@@ -14,6 +14,8 @@
     'stylekit-adapter.js',
     'structure-extract.js',
     'replica-blueprint.js',
+    'pattern-detect.js',
+    'css-parser.js',
     'code-generator.js',
     'export-schema.js'
   ];
@@ -64,6 +66,8 @@
       'stylekit-adapter.js': '__seStyleKit',
       'structure-extract.js': '__seStructure',
       'replica-blueprint.js': '__seBlueprint',
+      'pattern-detect.js': '__sePatternDetect',
+      'css-parser.js': '__seCSS',
       'code-generator.js': '__seCodeGen',
       'export-schema.js': '__seExport'
     };

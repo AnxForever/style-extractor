@@ -474,6 +474,16 @@
       dependencies: [],
       capabilities: ['library-detection'],
       extract: () => window.__seLibs?.detect?.() || null
+    },
+    {
+      name: 'pattern-detect',
+      globalName: '__sePatternDetect',
+      version: '1.0.0',
+      description: 'Repeating sibling pattern detection',
+      dependencies: [],
+      optionalDeps: ['structure', 'utils'],
+      capabilities: ['patterns', 'repeating-elements', 'template-detection'],
+      extract: () => window.__sePatternDetect?.detectPatterns()
     }
   ];
 
@@ -579,6 +589,7 @@
         'motion-assoc',
         'screenshot',
         'libs',
+        'pattern-detect',
         'codegen',
         'export'
       ],
@@ -602,6 +613,7 @@
    * @param {boolean} options.includeTheme - Extract both themes
    * @param {boolean} options.includeAISemantic - Generate AI-friendly semantic output
    * @param {string} options.format - Output format: 'raw', 'json', 'tailwind', 'stylekit'
+   * @param {string} options.depth - Blueprint detail level: 'overview', 'section', 'full' (default: 'full')
    */
   function toFormatInputFromStyleKit(stylekitResult, fallbackMeta = {}) {
     const normalized = stylekitResult?.normalized || {};
@@ -637,6 +649,67 @@
     };
   }
 
+  function compressBlueprint(blueprint, depth) {
+    if (!blueprint || depth === 'full') return blueprint;
+
+    function pruneTree(node, maxDepth, currentDepth = 0) {
+      if (!node) return null;
+      const pruned = { ...node };
+
+      if (depth === 'overview') {
+        // Overview: only keep sections and top-level components
+        // Remove deep visual/typography details from non-component nodes
+        if (!pruned.component && currentDepth > 1) {
+          delete pruned.visual;
+          delete pruned.typography;
+          delete pruned.constraints;
+        }
+        // Truncate children at depth 2
+        if (currentDepth >= 2) {
+          if (pruned.children) {
+            pruned.childCount = pruned.children.length;
+            delete pruned.children;
+          }
+          return pruned;
+        }
+      } else if (depth === 'section') {
+        // Section: keep 3 levels of depth with full details
+        if (currentDepth >= 3) {
+          if (pruned.children) {
+            pruned.childCount = pruned.children.length;
+            delete pruned.children;
+          }
+          return pruned;
+        }
+      }
+
+      if (pruned.children) {
+        pruned.children = pruned.children
+          .map(child => pruneTree(child, maxDepth, currentDepth + 1))
+          .filter(Boolean);
+      }
+
+      return pruned;
+    }
+
+    const compressed = { ...blueprint };
+    compressed.tree = pruneTree(compressed.tree, depth === 'overview' ? 2 : 3);
+    compressed.meta = { ...compressed.meta, depth };
+
+    // For overview, also trim interaction plan
+    if (depth === 'overview' && compressed.interaction) {
+      compressed.interaction = {
+        summary: compressed.interaction.summary,
+        // Keep only top recommendations
+        recommendations: compressed.interaction.recommendations
+          ? { total: compressed.interaction.recommendations.total, items: compressed.interaction.recommendations.items?.slice(0, 3) }
+          : null
+      };
+    }
+
+    return compressed;
+  }
+
   function extractStyle(options = {}) {
     // Re-run auto-register so modules loaded after registry init can join the run.
     autoRegister();
@@ -647,7 +720,8 @@
       includeCode = false,
       includeTheme = false,
       includeAISemantic = false,
-      format = 'raw'
+      format = 'raw',
+      depth = 'full'
     } = options;
 
     const replicaMode = preset === 'replica';
@@ -712,6 +786,11 @@
 
     if (replicaMode) {
       result.data.replica = buildReplicaPlan(result.data);
+    }
+
+    // Blueprint compression: reduce output size based on depth parameter
+    if (depth !== 'full' && result.data.blueprint) {
+      result.data.blueprint = compressBlueprint(result.data.blueprint, depth);
     }
 
     return result;

@@ -124,6 +124,28 @@
     decls.push(`${toCssProp(prop)}: ${v};`);
   }
 
+  function normalizeVarName(varName) {
+    if (!varName) return '';
+    const v = String(varName).trim();
+    if (!v) return '';
+    if (v.startsWith('var(')) return v;
+    // Expected input is "--token-name" from css reverse-map lookups.
+    if (v.startsWith('--')) return v;
+    return v;
+  }
+
+  function formatCssVarRef(varName, fallbackValue, options = {}) {
+    const v = normalizeVarName(varName);
+    if (!v) return null;
+    const includeFallback = options.varRefFallback !== false;
+    const fb = fallbackValue === null || fallbackValue === undefined ? '' : String(fallbackValue).trim();
+
+    // If caller already provided var(...), keep it and don't attempt to inject fallback.
+    if (v.startsWith('var(')) return v;
+    if (!includeFallback || !fb) return `var(${v})`;
+    return `var(${v}, ${fb})`;
+  }
+
   function boxToShorthand(box) {
     if (!box) return null;
     const top = box.top || '0';
@@ -511,6 +533,15 @@ export { default as Page } from './Page.vue';
     const decls = [];
     if (!node) return decls;
 
+    const varRefs = options.useVarRefs === false ? null : (node.varRefs || null);
+    const withVar = (key, literalValue) => {
+      if (!varRefs || !key) return literalValue;
+      const ref = varRefs[key];
+      if (!ref) return literalValue;
+      const out = formatCssVarRef(ref, literalValue, options);
+      return out || literalValue;
+    };
+
     // Layout
     const layout = node.layout || null;
     if (layout) {
@@ -531,6 +562,7 @@ export { default as Page } from './Page.vue';
         pushDecl(decls, 'justifyContent', layout.flex.justify);
         pushDecl(decls, 'alignItems', layout.flex.align);
         pushDecl(decls, 'gap', layout.flex.gap);
+        pushDecl(decls, 'alignContent', layout.flex.alignContent);
       }
 
       if (layout.grid) {
@@ -538,12 +570,32 @@ export { default as Page } from './Page.vue';
           ? layout.grid.columns
           : normalizeGridTemplateColumns(layout.grid.columns, node?.rect, layout.grid.gap, options);
         pushDecl(decls, 'gridTemplateColumns', cols);
-        pushDecl(decls, 'gridTemplateRows', layout.grid.rows);
+        let rows = layout.grid.rows;
+        if (options.omitPixelGridTemplateRows !== false && isPurePxTrackList(rows)) rows = null;
+        pushDecl(decls, 'gridTemplateRows', rows);
         pushDecl(decls, 'gridAutoFlow', layout.grid.autoFlow);
         pushDecl(decls, 'gap', layout.grid.gap);
+        pushDecl(decls, 'justifyItems', layout.grid.justifyItems);
+        pushDecl(decls, 'alignItems', layout.grid.alignItems);
+        pushDecl(decls, 'justifyContent', layout.grid.justifyContent);
+        pushDecl(decls, 'alignContent', layout.grid.alignContent);
+      }
+
+      if (layout.flexItem) {
+        pushDecl(decls, 'flexGrow', layout.flexItem.grow);
+        pushDecl(decls, 'flexShrink', layout.flexItem.shrink);
+        pushDecl(decls, 'flexBasis', layout.flexItem.basis);
+      }
+
+      if (layout.gridItem) {
+        pushDecl(decls, 'gridColumnStart', layout.gridItem.columnStart);
+        pushDecl(decls, 'gridColumnEnd', layout.gridItem.columnEnd);
+        pushDecl(decls, 'gridRowStart', layout.gridItem.rowStart);
+        pushDecl(decls, 'gridRowEnd', layout.gridItem.rowEnd);
       }
 
       pushDecl(decls, 'alignSelf', layout.alignSelf);
+      pushDecl(decls, 'justifySelf', layout.justifySelf);
       pushDecl(decls, 'order', layout.order);
     }
 
@@ -559,7 +611,7 @@ export { default as Page } from './Page.vue';
       if (!decls.some((d) => d.startsWith('gap:')) && constraints.spacing.gap) {
         const g = String(constraints.spacing.gap).trim();
         if (g && g !== '0' && g !== '0px' && g !== 'normal') {
-          pushDecl(decls, 'gap', g);
+          pushDecl(decls, 'gap', withVar('gap', g));
         }
       }
     }
@@ -577,12 +629,12 @@ export { default as Page } from './Page.vue';
     // Typography
     const typography = node.typography || null;
     if (typography) {
-      pushDecl(decls, 'fontFamily', typography.fontFamily);
-      pushDecl(decls, 'fontSize', typography.fontSize);
+      pushDecl(decls, 'fontFamily', withVar('fontFamily', typography.fontFamily));
+      pushDecl(decls, 'fontSize', withVar('fontSize', typography.fontSize));
       pushDecl(decls, 'fontWeight', typography.fontWeight);
       pushDecl(decls, 'fontStyle', typography.fontStyle);
-      pushDecl(decls, 'lineHeight', typography.lineHeight);
-      pushDecl(decls, 'letterSpacing', typography.letterSpacing);
+      pushDecl(decls, 'lineHeight', withVar('lineHeight', typography.lineHeight));
+      pushDecl(decls, 'letterSpacing', withVar('letterSpacing', typography.letterSpacing));
       pushDecl(decls, 'textAlign', typography.textAlign);
       pushDecl(decls, 'textTransform', typography.textTransform);
       pushDecl(decls, 'textDecorationLine', typography.textDecorationLine);
@@ -595,13 +647,13 @@ export { default as Page } from './Page.vue';
     // Visual
     const visual = node.visual || null;
     if (visual) {
-      pushDecl(decls, 'color', visual.color);
-      pushDecl(decls, 'backgroundColor', visual.backgroundColor);
+      pushDecl(decls, 'color', withVar('color', visual.color));
+      pushDecl(decls, 'backgroundColor', withVar('backgroundColor', visual.backgroundColor));
       pushDecl(decls, 'backgroundImage', visual.backgroundImage);
       pushDecl(decls, 'backgroundSize', visual.backgroundSize);
       pushDecl(decls, 'backgroundPosition', visual.backgroundPosition);
       pushDecl(decls, 'backgroundRepeat', visual.backgroundRepeat);
-      pushDecl(decls, 'borderRadius', visual.borderRadius);
+      pushDecl(decls, 'borderRadius', withVar('borderRadius', visual.borderRadius));
       pushDecl(decls, 'cursor', visual.cursor);
       pushDecl(decls, 'aspectRatio', visual.aspectRatio);
       pushDecl(decls, 'objectFit', visual.objectFit);
@@ -610,7 +662,8 @@ export { default as Page } from './Page.vue';
       if (visual.border) {
         const b = visual.border;
         if (isPlainObject(b) && 'width' in b && 'style' in b && 'color' in b) {
-          pushDecl(decls, 'border', `${b.width} ${b.style} ${b.color}`);
+          const borderColor = withVar('borderColor', b.color);
+          pushDecl(decls, 'border', `${b.width} ${b.style} ${borderColor}`);
         } else if (isPlainObject(b)) {
           if (b.top) pushDecl(decls, 'borderTop', `${b.top.width} ${b.top.style} ${b.top.color}`);
           if (b.right) pushDecl(decls, 'borderRight', `${b.right.width} ${b.right.style} ${b.right.color}`);
@@ -619,7 +672,7 @@ export { default as Page } from './Page.vue';
         }
       }
 
-      pushDecl(decls, 'boxShadow', visual.boxShadow);
+      pushDecl(decls, 'boxShadow', withVar('boxShadow', visual.boxShadow));
       pushDecl(decls, 'opacity', visual.opacity);
       pushDecl(decls, 'transform', visual.transform);
       pushDecl(decls, 'filter', visual.filter);
@@ -736,6 +789,29 @@ export { default as Page } from './Page.vue';
     return nums;
   }
 
+  function isPurePxTrackList(value) {
+    const v = normalizeCssValue(value);
+    if (!v || v === 'none') return false;
+    const lower = v.toLowerCase();
+    if (
+      lower.includes('fr') ||
+      lower.includes('minmax') ||
+      lower.includes('auto-fit') ||
+      lower.includes('auto-fill') ||
+      lower.includes('%') ||
+      lower.includes('calc(') ||
+      lower.includes('repeat(') ||
+      lower.includes('auto') ||
+      lower.includes('min-content') ||
+      lower.includes('max-content') ||
+      lower.includes('fit-content')
+    ) {
+      return false;
+    }
+    const tracks = parsePxTrackList(v);
+    return !!tracks;
+  }
+
   function normalizeGridTemplateColumns(columns, rect, gap, options = {}) {
     // Convert some computed pixel-resolved grids back into flexible fr tracks.
     // Example: "317px 317px" -> "repeat(2, minmax(0, 1fr))"
@@ -838,6 +914,52 @@ export { default as Page } from './Page.vue';
 
     const rules = [];
     const baseHasMargin = new Set();
+    const emittedPseudo = new Set(); // `${uid}::before` / `${uid}::after`
+
+    const buildPseudoDeclsFromBlueprint = (pseudoData) => {
+      if (!pseudoData || typeof pseudoData !== 'object') return null;
+      const decls = [];
+
+      pushDecl(decls, 'content', pseudoData.content);
+      pushDecl(decls, 'display', pseudoData.display);
+      pushDecl(decls, 'position', pseudoData.position);
+      pushDecl(decls, 'top', pseudoData.top);
+      pushDecl(decls, 'right', pseudoData.right);
+      pushDecl(decls, 'bottom', pseudoData.bottom);
+      pushDecl(decls, 'left', pseudoData.left);
+      pushDecl(decls, 'width', pseudoData.width);
+      pushDecl(decls, 'height', pseudoData.height);
+
+      pushDecl(decls, 'color', pseudoData.color);
+      pushDecl(decls, 'backgroundColor', pseudoData.backgroundColor);
+      pushDecl(decls, 'backgroundImage', pseudoData.backgroundImage);
+      pushDecl(decls, 'borderRadius', pseudoData.borderRadius);
+
+      if (pseudoData.border && typeof pseudoData.border === 'object') {
+        const b = pseudoData.border;
+        if (b.width && b.style && b.color) {
+          pushDecl(decls, 'border', `${b.width} ${b.style} ${b.color}`);
+        }
+      }
+
+      pushDecl(decls, 'boxShadow', pseudoData.boxShadow);
+      pushDecl(decls, 'opacity', pseudoData.opacity);
+      pushDecl(decls, 'transform', pseudoData.transform);
+
+      // Typography (counters/labels)
+      pushDecl(decls, 'fontSize', pseudoData.fontSize);
+      pushDecl(decls, 'fontWeight', pseudoData.fontWeight);
+      pushDecl(decls, 'fontFamily', pseudoData.fontFamily);
+
+      if (pseudoData.transition && typeof pseudoData.transition === 'object') {
+        pushDecl(decls, 'transitionProperty', pseudoData.transition.property);
+        pushDecl(decls, 'transitionDuration', pseudoData.transition.duration);
+        pushDecl(decls, 'transitionTimingFunction', pseudoData.transition.timingFunction);
+      }
+
+      if (!decls.some((d) => String(d).startsWith('content:'))) return null;
+      return decls;
+    };
 
     // Base reset for predictable rendering.
     rules.push(`/* Generated by style-extractor replica codegen */`);
@@ -856,6 +978,26 @@ export { default as Page } from './Page.vue';
         rules.push(`${selectorFor(node.uid)} {`);
         rules.push(`  ${decls.join('\n  ')}`);
         rules.push(`}`);
+
+        // Blueprint pseudo-elements (::before/::after).
+        // This is complementary to state-capture pseudo evidence, and covers more nodes than the stateLimit.
+        const pseudos = node?.pseudoElements || null;
+        if (pseudos && typeof pseudos === 'object') {
+          const beforeDecls = buildPseudoDeclsFromBlueprint(pseudos.before);
+          if (beforeDecls) {
+            emittedPseudo.add(`${node.uid}::before`);
+            rules.push(`${selectorFor(node.uid)}::before {`);
+            rules.push(`  ${beforeDecls.join('\n  ')}`);
+            rules.push(`}`);
+          }
+          const afterDecls = buildPseudoDeclsFromBlueprint(pseudos.after);
+          if (afterDecls) {
+            emittedPseudo.add(`${node.uid}::after`);
+            rules.push(`${selectorFor(node.uid)}::after {`);
+            rules.push(`  ${afterDecls.join('\n  ')}`);
+            rules.push(`}`);
+          }
+        }
       },
       options
     );
@@ -950,13 +1092,13 @@ export { default as Page } from './Page.vue';
         };
 
         const beforeDecls = collectPseudoDecls(base, '::before');
-        if (beforeDecls) {
+        if (beforeDecls && !emittedPseudo.has(`${uid}::before`)) {
           rules.push(`${selectorFor(uid)}::before {`);
           rules.push(`  ${beforeDecls.join('\n  ')}`);
           rules.push(`}`);
         }
         const afterDecls = collectPseudoDecls(base, '::after');
-        if (afterDecls) {
+        if (afterDecls && !emittedPseudo.has(`${uid}::after`)) {
           rules.push(`${selectorFor(uid)}::after {`);
           rules.push(`  ${afterDecls.join('\n  ')}`);
           rules.push(`}`);
@@ -1099,27 +1241,27 @@ export { default as Page } from './Page.vue';
                 const uid = selectorToUid.get(item.selector);
                 if (!uid) continue;
 
-                const baseItem = baseGrid.get(item.selector);
-                const colsOut = normalizeGridTemplateColumns(
+              const baseItem = baseGrid.get(item.selector);
+              const colsOut = normalizeGridTemplateColumns(
                   item.gridTemplateColumns,
                   item.rect,
                   item.columnGap || item.gap,
                   options
                 );
-                const baseColsOut = baseItem
-                  ? normalizeGridTemplateColumns(
-                      baseItem.gridTemplateColumns,
-                      baseItem.rect,
-                      baseItem.columnGap || baseItem.gap,
-                      options
-                    )
-                  : null;
-                const cols = normalizeCssValue(colsOut);
-                const rows = normalizeCssValue(item.gridTemplateRows);
-                const flow = normalizeCssValue(item.gridAutoFlow);
-                const gap = normalizeCssValue(item.gap);
-                const colGap = normalizeCssValue(item.columnGap);
-                const rowGap = normalizeCssValue(item.rowGap);
+              const baseColsOut = baseItem
+                ? normalizeGridTemplateColumns(
+                    baseItem.gridTemplateColumns,
+                    baseItem.rect,
+                    baseItem.columnGap || baseItem.gap,
+                    options
+                  )
+                : null;
+              const cols = normalizeCssValue(colsOut);
+              const rows = normalizeCssValue(item.gridTemplateRows);
+              const flow = normalizeCssValue(item.gridAutoFlow);
+              const gap = normalizeCssValue(item.gap);
+              const colGap = normalizeCssValue(item.columnGap);
+              const rowGap = normalizeCssValue(item.rowGap);
 
                 const changed =
                   !baseItem ||
@@ -1134,7 +1276,9 @@ export { default as Page } from './Page.vue';
 
                 setOverride(uid, 'display', 'grid');
                 if (cols) setOverride(uid, 'gridTemplateColumns', colsOut);
-                if (rows) setOverride(uid, 'gridTemplateRows', item.gridTemplateRows);
+                if (rows && (options.omitPixelGridTemplateRows === false || !isPurePxTrackList(item.gridTemplateRows))) {
+                  setOverride(uid, 'gridTemplateRows', item.gridTemplateRows);
+                }
                 if (flow) setOverride(uid, 'gridAutoFlow', item.gridAutoFlow);
                 if (gap && gap !== 'normal') setOverride(uid, 'gap', item.gap);
                 if (colGap && colGap !== 'normal') setOverride(uid, 'columnGap', item.columnGap);

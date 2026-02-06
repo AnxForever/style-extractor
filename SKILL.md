@@ -96,6 +96,7 @@ await evaluate_script({ function: `async () => {
     "library-detect.js",
     "code-generator.js",
     "replica-blueprint.js",
+    "pattern-detect.js",
     "format-converter.js",
     "export-schema.js",
     "incremental.js",
@@ -107,7 +108,7 @@ await evaluate_script({ function: `async () => {
   const globals = [
     "__seUtils","__seStructure","__seCSS","__seComponents","__seStateCapture","__seAISemantic","__seA11y",
     "__seResponsive","__seStyleKit","__seTheme","__seMotion","__seMotionEnhanced","__seMotionAssoc","__seScreenshot",
-    "__seLibs","__seCodeGen","__seBlueprint","__seFormat","__seExport","__seIncremental","__seMultiPage","__seRegistry"
+    "__seLibs","__seCodeGen","__seBlueprint","__sePatternDetect","__seFormat","__seExport","__seIncremental","__seMultiPage","__seRegistry"
   ];
   for (const g of globals) window[g] = null;
   window.extractStyle = null;
@@ -221,10 +222,15 @@ Use this map to convert extracted data into an AI-reconstructable UI blueprint:
 - `blueprint.relationships`: Use to infer ordering, alignment groups, flex/grid containers, and overlays for layout reconstruction.
 - `blueprint.interaction`: Use for MCP-driven state workflows, state matrices, and interactive target list. Targets may include `source`, `availableStates`, `component` / `section`, `tag`, `priority`, and a11y hints like `accessibleRole` / `accessibleName` (useful for finding element UIDs in MCP snapshots). When present, `interaction.groups` aggregates targets by component, section, component type, and role. `interaction.recommendations` provides a ranked list of high-value targets to replicate first, plus an `actions` checklist (hover/focus/click, screenshots, and diff scripts). `interaction.workflowsForTopTargets` is a ready-to-run batch workflow for the top recommendations; `interaction.workflowsForTopTargets.batch.steps` provides a linear list of MCP calls and scripts that can be executed sequentially, and `batch.runner.script` provides a pseudo-runner for agents that can call MCP tools. `batch.serialized.steps` provides a tool-call list ready for sequential execution.
 - `blueprint.responsive`: Use as breakpoint definitions + MCP viewport workflow for variants. If `variants` exists, use it to compare stored viewport layouts.
+- `blueprint.responsiveHints`: Condensed layout/visibility changes between breakpoints (derived from responsive comparisons). Use to understand how sections reflow at different viewports without inspecting full variant data.
+- `blueprint.patterns`: Repeating sibling patterns detected via structural fingerprinting. Each entry has `selector`, `fingerprint`, `count`, and `template`. Use to identify list/grid items (cards, nav links, etc.) that share the same DOM skeleton and should be rendered with a loop.
 - `blueprint.tokens`: Use as semantic tokens for colors, typography, spacing, radii, shadows, motion.
 - `blueprint.page`: Use as page-level semantic classification.
 - `blueprint.intent`: Use as intent summary to prioritize key UI elements.
-- `window.__seBlueprint.toLLMPrompt(blueprint)`: Generates a condensed Markdown+JSON prompt (bounded by `maxChars`) you can paste directly into an LLM to rebuild the UI with higher fidelity.
+- **Node-level fields (inside `blueprint.tree` nodes)**:
+  - `node.varRefs`: CSS variable annotations mapping visual/typography/spacing keys to their `var(--name)` equivalents. Use to output `var(--color-primary)` instead of hardcoded `#2563eb`.
+  - `node.pseudoElements`: Default-state `::before` / `::after` computed styles (content, colors, size, position, border, transform, etc.). Use to reconstruct decorative pseudo-elements.
+- `window.__seBlueprint.toLLMPrompt(blueprint)`: Generates a condensed Markdown+JSON prompt (bounded by `maxChars`) you can paste directly into an LLM to rebuild the UI with higher fidelity. Includes patterns, responsiveHints, and hints about varRefs/pseudoElements.
 
 ### MCP-Driven State Capture (NEW in v3.1)
 
@@ -261,6 +267,7 @@ const scripts = [
   'ai-semantic.js',        // P0 - AI semantic output
   'a11y-tree.js',          // P1 - Accessibility tree
   'replica-blueprint.js',  // P1 - Replica blueprint IR
+  'pattern-detect.js',     // P1 - Repeating pattern detection
   'motion-enhanced.js',    // P2 - Enhanced motion
   'responsive-extract.js', // P2 - Responsive layouts
   'format-converter.js', 'stylekit-adapter.js', 'structure-extract.js',
@@ -664,7 +671,7 @@ window.__seRegistry.capabilities()            // List all capabilities
 | `components` | structure, components, stylekit |
 | `motion` | motion, motion-assoc |
 | `ai-semantic` | structure, components, state-capture, ai-semantic |
-| `replica` | structure, css, components, a11y, state-capture, responsive, stylekit, blueprint, theme, motion, motion-enhanced, motion-assoc, screenshot, libs, codegen, export |
+| `replica` | structure, css, components, a11y, state-capture, responsive, stylekit, blueprint, pattern-detect, theme, motion, motion-enhanced, motion-assoc, screenshot, libs, codegen, export |
 | `full` | All modules |
 
 ### `scripts/motion-tools.js`
@@ -1080,6 +1087,68 @@ window.__seBlueprint.build({
 
 // Alias
 window.__seBlueprint.generate(...)
+
+// Generate condensed LLM prompt
+window.__seBlueprint.toLLMPrompt(blueprint, { maxChars: 12000 })
+```
+
+**Blueprint Compression (`depth` option):**
+
+When calling `extractStyle()` with `depth`, the blueprint is compressed to reduce payload size:
+
+| Depth | Behavior |
+|-------|----------|
+| `'full'` (default) | No compression, all nodes and fields preserved |
+| `'section'` | Tree pruned to depth 3, full visual/typography retained |
+| `'overview'` | Tree pruned to depth 2, visual/typography fields stripped from nodes |
+
+```javascript
+window.extractStyle({ preset: 'replica', depth: 'section' })
+```
+
+### `scripts/pattern-detect.js` (NEW)
+
+Repeating sibling pattern detection for identifying list/grid items.
+
+```javascript
+// Detect repeating patterns in the DOM
+window.__sePatternDetect.detectPatterns(options)
+// Returns: [{ selector, fingerprint, count, template, containerSelector }]
+// Options: { minCount: 3, maxDepth: 4 }
+
+// Get structural fingerprint for a single element
+window.__sePatternDetect.fingerprint(element, maxDepth)
+// Returns: "div.card>img+div.card-body>h3+p" (structural signature)
+
+// Generate AI-friendly rendering hints from detected patterns
+window.__sePatternDetect.generatePatternGuide()
+// Returns: markdown/string with template suggestions for each pattern group
+
+// Build a template summary for a pattern group
+window.__sePatternDetect.buildTemplateSummary(group)
+// Returns: { tag, classes, childStructure, sampleText }
+
+// Check if a class name is a utility class (Tailwind, etc.)
+window.__sePatternDetect.isUtilityClass(className)
+// Returns: boolean
+```
+
+**Pattern Detection Output:**
+```javascript
+[
+  {
+    selector: "main > .grid > .card",
+    fingerprint: "div.card>img.card-img+div.card-body>h3.card-title+p.card-text",
+    count: 6,
+    containerSelector: "main > .grid",
+    template: {
+      tag: "div",
+      classes: ["card"],
+      childStructure: "img + div > h3 + p",
+      sampleText: "Feature 1..."
+    }
+  }
+]
 ```
 
 **Options for `extractDOM()`:**
@@ -1161,6 +1230,19 @@ window.__seCSS.extractKeyframes()       // Extract @keyframes
 window.__seCSS.extractMediaQueries()    // Extract media queries + breakpoints
 window.__seCSS.extractFontFaces()       // Extract @font-face declarations
 window.__seCSS.generateVariablesCSS()   // Generate CSS from variables
+
+// CSS Variable Reverse Mapping (NEW)
+window.__seCSS.buildReverseMap()        // Build computed-value -> variable-name map
+// Returns: { map: { "rgb(37, 99, 235)": { varName: "--color-primary", rawValue: "#2563eb", category: "color" } }, categories: {...} }
+
+window.__seCSS.lookupVariable(value)    // Look up CSS variable for a computed value
+// Returns: { varName, rawValue, category } or null
+
+window.__seCSS.normalizeColorValue(v)   // Normalize hex/rgb/rgba/hsl to canonical rgb string
+
+// Font Source Extraction (NEW)
+window.__seCSS.extractFontSources()     // Extract font loading sources
+// Returns: { google: [...], typekit: { id, families }, preconnects: [...], imports: [...], allFamilies: [...] }
 ```
 
 ### `scripts/multi-page.js` (NEW in v3.0)
@@ -1343,6 +1425,15 @@ python scripts/extract-keyframes.py <folder> --out keyframes.md
 - [ ] Completeness score > 70%
 - [ ] Tags auto-inferred correctly
 - [ ] All sections populated
+
+### Replica Fidelity (NEW)
+- [ ] CSS variable reverse map populated (buildReverseMap returns entries)
+- [ ] Font sources detected (Google Fonts, Typekit, @font-face)
+- [ ] Repeating patterns detected for card grids, nav items, lists
+- [ ] Pseudo-element default states captured (::before/::after)
+- [ ] Blueprint nodes carry varRefs for CSS variable annotation
+- [ ] Responsive hints summarize layout changes across breakpoints
+- [ ] toLLMPrompt includes patterns and responsive hints in condensed output
 
 ### AI Semantic Output (NEW in v3.1)
 - [ ] Page type correctly identified

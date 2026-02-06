@@ -173,6 +173,7 @@
 
     if (s.position && s.position !== 'static') layout.position = s.position;
     if (s.zIndex && s.zIndex !== 'auto') layout.zIndex = s.zIndex;
+    if (s.isolation && s.isolation !== 'auto') layout.isolation = s.isolation;
     // Important for reconstructing overlays/absolute layouts.
     if (s.top && s.top !== 'auto') layout.top = s.top;
     if (s.right && s.right !== 'auto') layout.right = s.right;
@@ -185,7 +186,9 @@
         wrap: s.flexWrap,
         justify: s.justifyContent,
         align: s.alignItems,
-        gap: isNonZero(s.gap) ? s.gap : null
+        gap: isNonZero(s.gap) ? s.gap : null,
+        // Useful for multi-row flex layouts.
+        alignContent: s.alignContent && s.alignContent !== 'normal' ? s.alignContent : null
       };
     }
 
@@ -194,7 +197,11 @@
         columns: s.gridTemplateColumns !== 'none' ? s.gridTemplateColumns : null,
         rows: s.gridTemplateRows !== 'none' ? s.gridTemplateRows : null,
         autoFlow: s.gridAutoFlow,
-        gap: isNonZero(s.gap) ? s.gap : null
+        gap: isNonZero(s.gap) ? s.gap : null,
+        justifyItems: s.justifyItems && s.justifyItems !== 'stretch' ? s.justifyItems : null,
+        alignItems: s.alignItems && s.alignItems !== 'stretch' ? s.alignItems : null,
+        justifyContent: s.justifyContent && s.justifyContent !== 'normal' ? s.justifyContent : null,
+        alignContent: s.alignContent && s.alignContent !== 'normal' ? s.alignContent : null
       };
     }
 
@@ -203,7 +210,23 @@
     if (s.overflowX && s.overflowX !== 'visible' && s.overflowX !== s.overflow) layout.overflowX = s.overflowX;
     if (s.overflowY && s.overflowY !== 'visible' && s.overflowY !== s.overflow) layout.overflowY = s.overflowY;
 
+    // Flex item evidence (e.g. `flex-1`).
+    const flexItem = {};
+    if (s.flexGrow && s.flexGrow !== '0') flexItem.grow = s.flexGrow;
+    if (s.flexShrink && s.flexShrink !== '1') flexItem.shrink = s.flexShrink;
+    if (s.flexBasis && s.flexBasis !== 'auto') flexItem.basis = s.flexBasis;
+    if (Object.keys(flexItem).length > 0) layout.flexItem = flexItem;
+
+    // Grid item placement evidence (spans/positioning in CSS grid).
+    const gridItem = {};
+    if (s.gridColumnStart && s.gridColumnStart !== 'auto') gridItem.columnStart = s.gridColumnStart;
+    if (s.gridColumnEnd && s.gridColumnEnd !== 'auto') gridItem.columnEnd = s.gridColumnEnd;
+    if (s.gridRowStart && s.gridRowStart !== 'auto') gridItem.rowStart = s.gridRowStart;
+    if (s.gridRowEnd && s.gridRowEnd !== 'auto') gridItem.rowEnd = s.gridRowEnd;
+    if (Object.keys(gridItem).length > 0) layout.gridItem = gridItem;
+
     if (s.alignSelf && s.alignSelf !== 'auto') layout.alignSelf = s.alignSelf;
+    if (s.justifySelf && s.justifySelf !== 'auto') layout.justifySelf = s.justifySelf;
     if (s.order && s.order !== '0') layout.order = s.order;
 
     return cleanObject(layout);
@@ -1274,6 +1297,159 @@
     return null;
   }
 
+  function extractPseudoElements(el) {
+    const result = {};
+
+    for (const pseudo of ['::before', '::after']) {
+      const ps = getComputedStyle(el, pseudo);
+      // Only capture if the pseudo-element actually renders (has content)
+      const content = ps.content;
+      if (!content || content === 'none' || content === 'normal') continue;
+
+      const data = {
+        content: content
+      };
+
+      // Visual properties
+      const color = ps.color;
+      const bgColor = ps.backgroundColor;
+      const bgImage = ps.backgroundImage;
+      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
+        data.backgroundColor = bgColor;
+      }
+      if (bgImage && bgImage !== 'none') {
+        data.backgroundImage = bgImage;
+      }
+      if (color) data.color = color;
+
+      // Size and position
+      const width = ps.width;
+      const height = ps.height;
+      if (width && width !== 'auto' && width !== '0px') data.width = width;
+      if (height && height !== 'auto' && height !== '0px') data.height = height;
+
+      const position = ps.position;
+      if (position && position !== 'static') {
+        data.position = position;
+        const top = ps.top;
+        const left = ps.left;
+        const right = ps.right;
+        const bottom = ps.bottom;
+        if (top && top !== 'auto') data.top = top;
+        if (left && left !== 'auto') data.left = left;
+        if (right && right !== 'auto') data.right = right;
+        if (bottom && bottom !== 'auto') data.bottom = bottom;
+      }
+
+      // Border & shape
+      const borderRadius = ps.borderRadius;
+      if (borderRadius && borderRadius !== '0px') data.borderRadius = borderRadius;
+
+      const borderWidth = ps.borderTopWidth;
+      const borderStyle = ps.borderTopStyle;
+      const borderColor = ps.borderTopColor;
+      if (borderWidth && borderWidth !== '0px' && borderStyle && borderStyle !== 'none') {
+        data.border = { width: borderWidth, style: borderStyle, color: borderColor };
+      }
+
+      // Transform & opacity
+      const transform = ps.transform;
+      if (transform && transform !== 'none') data.transform = transform;
+      const opacity = ps.opacity;
+      if (opacity && opacity !== '1') data.opacity = opacity;
+
+      // Box shadow
+      const boxShadow = ps.boxShadow;
+      if (boxShadow && boxShadow !== 'none') data.boxShadow = boxShadow;
+
+      // Display
+      const display = ps.display;
+      if (display && display !== 'inline') data.display = display;
+
+      // Typography (for text pseudo-elements like counters)
+      if (content !== '""' && content !== "''") {
+        const fontSize = ps.fontSize;
+        const fontWeight = ps.fontWeight;
+        const fontFamily = ps.fontFamily;
+        if (fontSize) data.fontSize = fontSize;
+        if (fontWeight && fontWeight !== '400' && fontWeight !== 'normal') data.fontWeight = fontWeight;
+        if (fontFamily) data.fontFamily = fontFamily;
+      }
+
+      // Transition
+      const transitionDuration = ps.transitionDuration;
+      if (transitionDuration && transitionDuration !== '0s') {
+        data.transition = {
+          property: ps.transitionProperty,
+          duration: transitionDuration,
+          timingFunction: ps.transitionTimingFunction
+        };
+      }
+
+      const key = pseudo === '::before' ? 'before' : 'after';
+      result[key] = cleanObject(data);
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+  }
+
+  function buildVarRefs(node, cssVarMap) {
+    if (!cssVarMap || !node) return null;
+    const refs = {};
+
+    function lookup(value) {
+      if (!value || typeof value !== 'string') return null;
+      const entry = cssVarMap[value];
+      if (entry) return entry.varName;
+      // Try color normalization if __seCSS is available
+      const normalized = window.__seCSS?.normalizeColorValue?.(value);
+      if (normalized && cssVarMap[normalized]) return cssVarMap[normalized].varName;
+      return null;
+    }
+
+    // Visual properties
+    if (node.visual) {
+      const v = node.visual;
+      const colorRef = lookup(v.color);
+      if (colorRef) refs.color = colorRef;
+      const bgRef = lookup(v.backgroundColor);
+      if (bgRef) refs.backgroundColor = bgRef;
+      const radiusRef = lookup(v.borderRadius);
+      if (radiusRef) refs.borderRadius = radiusRef;
+      // Border color
+      if (v.border) {
+        const borderColorRef = v.border.color ? lookup(v.border.color) : null;
+        if (borderColorRef) refs.borderColor = borderColorRef;
+      }
+      const shadowRef = lookup(v.boxShadow);
+      if (shadowRef) refs.boxShadow = shadowRef;
+    }
+
+    // Typography properties
+    if (node.typography) {
+      const t = node.typography;
+      const fontSizeRef = lookup(t.fontSize);
+      if (fontSizeRef) refs.fontSize = fontSizeRef;
+      const fontFamilyRef = lookup(t.fontFamily);
+      if (fontFamilyRef) refs.fontFamily = fontFamilyRef;
+      const lineHeightRef = lookup(t.lineHeight);
+      if (lineHeightRef) refs.lineHeight = lineHeightRef;
+      const letterSpacingRef = lookup(t.letterSpacing);
+      if (letterSpacingRef) refs.letterSpacing = letterSpacingRef;
+    }
+
+    // Spacing (padding, margin, gap)
+    if (node.constraints?.spacing) {
+      const sp = node.constraints.spacing;
+      if (sp.gap) {
+        const gapRef = lookup(sp.gap);
+        if (gapRef) refs.gap = gapRef;
+      }
+    }
+
+    return Object.keys(refs).length > 0 ? refs : null;
+  }
+
   function buildNode(el, depth, parentRect, indexes, options, stats) {
     if (!el || el.nodeType !== 1) return null;
     if (depth > options.maxDepth) return null;
@@ -1413,6 +1589,23 @@
       if (Object.keys(typography).length > 0) node.typography = typography;
       const visual = extractVisual(s);
       if (Object.keys(visual).length > 0) node.visual = visual;
+    }
+
+    // Capture ::before and ::after pseudo-element styles in default state.
+    // Many sites use pseudo-elements for decorative indicators that are always present.
+    if (s) {
+      const pseudos = extractPseudoElements(el);
+      if (pseudos) {
+        node.pseudoElements = pseudos;
+      }
+    }
+
+    // Annotate computed values with CSS variable references
+    if (indexes.cssVarMap) {
+      const varRefs = buildVarRefs(node, indexes.cssVarMap);
+      if (varRefs && Object.keys(varRefs).length > 0) {
+        node.varRefs = varRefs;
+      }
     }
 
     const component = indexes.components.elementIndex.get(el) ||
@@ -2015,9 +2208,328 @@
     };
   }
 
+  function rectArea(rect) {
+    if (!rect) return 0;
+    const w = Number(rect.width);
+    const h = Number(rect.height);
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return 0;
+    return Math.max(0, w) * Math.max(0, h);
+  }
+
+  function parseZIndex(value) {
+    if (value === null || value === undefined) return null;
+    const s = String(value).trim();
+    if (!s || s === 'auto') return null;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function walkNodeTree(tree, fn) {
+    function visit(node, depth) {
+      if (!node) return;
+      fn(node, depth);
+      const children = Array.isArray(node.children) ? node.children : [];
+      for (const child of children) {
+        visit(child, depth + 1);
+      }
+    }
+
+    visit(tree, 0);
+  }
+
+  function detectStackingContexts(tree) {
+    if (!tree) return null;
+
+    const rootArea = tree?.rect ? rectArea(tree.rect) : null;
+    const contexts = [];
+
+    walkNodeTree(tree, (node, depth) => {
+      const layout = node?.layout || null;
+      const visual = node?.visual || null;
+      const reasons = [];
+
+      if (layout?.isolation === 'isolate') reasons.push('isolation:isolate');
+      if (layout?.position && layout.position !== 'static' && layout?.zIndex) reasons.push('position+z-index');
+
+      const opacity = visual?.opacity ? String(visual.opacity).trim() : '';
+      if (opacity && opacity !== '1') reasons.push('opacity');
+
+      const transform = visual?.transform ? String(visual.transform).trim() : '';
+      if (transform && transform !== 'none') reasons.push('transform');
+
+      const filter = visual?.filter ? String(visual.filter).trim() : '';
+      if (filter && filter !== 'none') reasons.push('filter');
+
+      const backdrop = visual?.backdropFilter ? String(visual.backdropFilter).trim() : '';
+      if (backdrop && backdrop !== 'none') reasons.push('backdrop-filter');
+
+      const blend = visual?.mixBlendMode ? String(visual.mixBlendMode).trim() : '';
+      if (blend && blend !== 'normal') reasons.push('mix-blend-mode');
+
+      if (reasons.length === 0) return;
+
+      const rect = node?.rect || null;
+      const area = rect ? rectArea(rect) : 0;
+      const zIndexNum = parseZIndex(layout?.zIndex);
+      contexts.push({
+        uid: node?.uid || null,
+        selector: node?.selector || null,
+        rect,
+        depth,
+        area,
+        areaRatio: rootArea ? Math.round((area / rootArea) * 10000) / 10000 : null,
+        position: layout?.position || 'static',
+        zIndex: layout?.zIndex || null,
+        zIndexNum,
+        isolation: layout?.isolation || null,
+        reasons
+      });
+    });
+
+    if (contexts.length === 0) return null;
+
+    contexts.sort((a, b) => {
+      const az = Number.isFinite(a.zIndexNum) ? a.zIndexNum : -Infinity;
+      const bz = Number.isFinite(b.zIndexNum) ? b.zIndexNum : -Infinity;
+      if (bz !== az) return bz - az;
+      if ((b.area || 0) !== (a.area || 0)) return (b.area || 0) - (a.area || 0);
+      return (a.depth || 0) - (b.depth || 0);
+    });
+
+    const top = contexts.slice(0, 32).map((c) => ({
+      uid: c.uid,
+      selector: c.selector,
+      rect: c.rect || null,
+      position: c.position || null,
+      zIndex: c.zIndex || null,
+      zIndexNum: c.zIndexNum,
+      isolation: c.isolation || null,
+      reasons: c.reasons,
+      areaRatio: c.areaRatio
+    }));
+
+    const overlayCandidates = top
+      .filter((c) => {
+        const pos = String(c.position || '').toLowerCase();
+        const z = Number.isFinite(c.zIndexNum) ? c.zIndexNum : null;
+        if (pos === 'fixed' || pos === 'sticky') return true;
+        if (pos === 'absolute' && z !== null && z >= 10) return true;
+        if (z !== null && z >= 50) return true;
+        return false;
+      })
+      .slice(0, 12);
+
+    return {
+      count: contexts.length,
+      top,
+      overlayCandidates,
+      note: 'Stacking contexts are approximate. Within the same context, paint order follows DOM order; higher z-index generally renders above lower.'
+    };
+  }
+
+  function extractUrlsFromCssImage(value) {
+    const v = value === null || value === undefined ? '' : String(value);
+    if (!v || v === 'none') return [];
+    const urls = [];
+    const re = /url\\(([^)]+)\\)/g;
+    let m = null;
+    while ((m = re.exec(v))) {
+      const raw = (m[1] || '').trim().replace(/^['"]|['"]$/g, '');
+      if (raw) urls.push(raw);
+      if (urls.length >= 16) break;
+    }
+    return urls;
+  }
+
+  function parseSrcsetUrls(srcset) {
+    const v = srcset === null || srcset === undefined ? '' : String(srcset).trim();
+    if (!v) return [];
+    const out = [];
+    for (const part of v.split(',')) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const first = trimmed.split(/\s+/)[0];
+      if (first) out.push(first);
+      if (out.length >= 12) break;
+    }
+    return out;
+  }
+
+  function normalizeAssetUrl(rawUrl) {
+    const v = rawUrl === null || rawUrl === undefined ? '' : String(rawUrl).trim();
+    if (!v) return null;
+    const cleaned = v.replace(/^['"]|['"]$/g, '');
+    if (!cleaned) return null;
+    if (cleaned.startsWith('data:')) return cleaned;
+    if (cleaned.startsWith('blob:')) return cleaned;
+    try {
+      return new URL(cleaned, location.href).href;
+    } catch {
+      return cleaned;
+    }
+  }
+
+  function extractAssetManifest(tree, options = {}) {
+    const maxAssets = Number.isFinite(options.maxAssets) ? options.maxAssets : 220;
+    const items = [];
+    const seen = new Set();
+    const byType = { image: 0, video: 0, svg: 0, background: 0, other: 0 };
+
+    const add = (rawUrl, type, source, selector) => {
+      if (items.length >= maxAssets) return;
+      const url = normalizeAssetUrl(rawUrl);
+      if (!url) return;
+      if (seen.has(url)) return;
+      seen.add(url);
+
+      const t = type || 'other';
+      if (!(t in byType)) byType.other += 1;
+      else byType[t] += 1;
+
+      items.push({
+        url,
+        type: t,
+        source: source || null,
+        selector: selector || null
+      });
+    };
+
+    // Tag-based assets (high signal).
+    try {
+      document.querySelectorAll('img').forEach((img) => {
+        if (items.length >= maxAssets) return;
+        const sel = cssPath(img);
+        add(img.currentSrc || img.src || img.getAttribute('src'), 'image', 'img.src', sel);
+        const srcset = img.getAttribute('srcset');
+        for (const u of parseSrcsetUrls(srcset)) add(u, 'image', 'img.srcset', sel);
+      });
+
+      document.querySelectorAll('video').forEach((vid) => {
+        if (items.length >= maxAssets) return;
+        const sel = cssPath(vid);
+        add(vid.currentSrc || vid.src || vid.getAttribute('src'), 'video', 'video.src', sel);
+        add(vid.getAttribute('poster'), 'image', 'video.poster', sel);
+        vid.querySelectorAll('source').forEach((src) => {
+          add(src.getAttribute('src'), 'video', 'video.source', sel);
+          for (const u of parseSrcsetUrls(src.getAttribute('srcset'))) add(u, 'video', 'video.source.srcset', sel);
+        });
+      });
+
+      document.querySelectorAll('picture source').forEach((src) => {
+        if (items.length >= maxAssets) return;
+        const sel = cssPath(src);
+        add(src.getAttribute('src'), 'image', 'picture.source', sel);
+        for (const u of parseSrcsetUrls(src.getAttribute('srcset'))) add(u, 'image', 'picture.source.srcset', sel);
+      });
+
+      document.querySelectorAll('svg use').forEach((use) => {
+        if (items.length >= maxAssets) return;
+        const sel = cssPath(use);
+        add(use.getAttribute('href') || use.getAttribute('xlink:href'), 'svg', 'svg.use', sel);
+      });
+
+      document.querySelectorAll('svg image').forEach((img) => {
+        if (items.length >= maxAssets) return;
+        const sel = cssPath(img);
+        add(img.getAttribute('href') || img.getAttribute('xlink:href'), 'image', 'svg.image', sel);
+      });
+
+      document
+        .querySelectorAll('link[rel~=\"icon\"], link[rel=\"apple-touch-icon\"], link[rel=\"mask-icon\"]')
+        .forEach((link) => {
+          if (items.length >= maxAssets) return;
+          const rel = String(link.getAttribute('rel') || '').toLowerCase();
+          const href = link.getAttribute('href');
+          const sel = cssPath(link);
+          const type = rel.includes('mask-icon') || String(href || '').toLowerCase().endsWith('.svg') ? 'svg' : 'image';
+          add(href, type, `link[rel=${rel}]`, sel);
+        });
+
+      document.querySelectorAll('meta[property=\"og:image\"], meta[name=\"twitter:image\"]').forEach((meta) => {
+        if (items.length >= maxAssets) return;
+        add(meta.getAttribute('content'), 'image', 'meta:image', cssPath(meta));
+      });
+    } catch (e) {
+      logger.warn('Asset tag scan failed:', e.message);
+    }
+
+    // Background images from captured nodes (including pseudo-elements).
+    try {
+      if (tree) {
+        walkNodeTree(tree, (node) => {
+          if (items.length >= maxAssets) return;
+          const bg = node?.visual?.backgroundImage || null;
+          if (bg) {
+            for (const u of extractUrlsFromCssImage(bg)) add(u, 'background', 'visual.backgroundImage', node.selector || null);
+          }
+
+          const pseudos = node?.pseudoElements || null;
+          if (pseudos && typeof pseudos === 'object') {
+            const beforeBg = pseudos?.before?.backgroundImage;
+            const afterBg = pseudos?.after?.backgroundImage;
+            if (beforeBg) for (const u of extractUrlsFromCssImage(beforeBg)) add(u, 'background', 'pseudo.before.backgroundImage', node.selector || null);
+            if (afterBg) for (const u of extractUrlsFromCssImage(afterBg)) add(u, 'background', 'pseudo.after.backgroundImage', node.selector || null);
+          }
+        });
+      }
+    } catch (e) {
+      logger.warn('Asset background scan failed:', e.message);
+    }
+
+    return {
+      total: items.length,
+      byType,
+      items,
+      note: 'Manifest includes URLs found in media tags and captured background-image values. Data/blob URLs may not be downloadable.'
+    };
+  }
+
   // --------------------------------------------
   // Main builder
   // --------------------------------------------
+
+  function buildResponsiveHints(responsive, sections) {
+    if (!responsive?.variants?.comparisons) return null;
+
+    const hints = [];
+
+    for (const comparison of responsive.variants.comparisons) {
+      const hint = {
+        from: comparison.from,
+        to: comparison.to,
+        layoutChanges: [],
+        visibilityChanges: []
+      };
+
+      // Summarize layout changes (flex direction flips, grid column changes)
+      if (comparison.layoutChanges) {
+        for (const change of comparison.layoutChanges.slice(0, 8)) {
+          hint.layoutChanges.push({
+            selector: change.selector || change.element || null,
+            property: change.property || null,
+            from: change.from || change.valueA || null,
+            to: change.to || change.valueB || null
+          });
+        }
+      }
+
+      // Summarize visibility changes (elements hidden/shown at different breakpoints)
+      if (comparison.visibilityChanges) {
+        for (const change of comparison.visibilityChanges.slice(0, 6)) {
+          hint.visibilityChanges.push({
+            selector: change.selector || change.element || null,
+            change: change.change || change.type || null
+          });
+        }
+      }
+
+      if (hint.layoutChanges.length > 0 || hint.visibilityChanges.length > 0) {
+        hints.push(hint);
+      }
+    }
+
+    return hints.length > 0 ? hints : null;
+  }
 
   function build(extractedData = {}, options = {}) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -2042,11 +2554,14 @@
     const states = buildStateIndex(stateData);
     const a11yIndex = buildA11yIndex(a11y);
 
+    // Get CSS variable reverse map for annotating computed values with var() references
+    const cssReverseMap = window.__seCSS?.buildReverseMap?.()?.map || null;
+
     const stats = { count: 0, truncated: false };
     let tree = null;
 
     try {
-      tree = buildNode(document.body, 0, null, { components, states, a11y: a11yIndex }, opts, stats);
+      tree = buildNode(document.body, 0, null, { components, states, a11y: a11yIndex, cssVarMap: cssReverseMap }, opts, stats);
     } catch (e) {
       logger.warn('Failed to build tree:', e.message);
     }
@@ -2069,6 +2584,23 @@
       primaryNodeId: (bindings.get(entry.id) || [])[0] || null
     }));
 
+    // Detect repeating sibling patterns
+    let patterns = null;
+    if (window.__sePatternDetect?.installed) {
+      try {
+        patterns = window.__sePatternDetect.detectPatterns();
+      } catch (e) {
+        logger.warn('Failed to detect patterns:', e.message);
+      }
+    }
+
+    // Pre-compute responsive summary for reuse
+    const responsiveSummary = summarizeResponsive(responsive);
+
+    // Extra fidelity helpers for LLM-guided reconstruction.
+    const stacking = detectStackingContexts(tree);
+    const assets = extractAssetManifest(tree, opts);
+
     const blueprint = {
       meta: {
         url: location.href,
@@ -2087,6 +2619,9 @@
           relationships.alignments.length +
           relationships.flex.length +
           relationships.grid.length,
+        patternCount: patterns?.count || 0,
+        stackingContextCount: stacking?.count || 0,
+        assetCount: assets?.total || 0,
         truncated: stats.truncated
       },
       tree,
@@ -2099,10 +2634,19 @@
       layout: summarizeLayout(structure),
       relationships,
       interaction,
-      responsive: summarizeResponsive(responsive),
+      responsive: responsiveSummary,
+      responsiveHints: buildResponsiveHints(responsiveSummary, sections),
       tokens,
       page: aiSemantic?.page || null,
-      intent: aiSemantic?.summary || null
+      intent: aiSemantic?.summary || null,
+      stacking,
+      assets,
+      patterns: patterns?.count > 0 ? {
+        count: patterns.count,
+        totalRepeatingElements: patterns.totalRepeatingElements,
+        items: patterns.patterns,
+        guide: window.__sePatternDetect?.generatePatternGuide?.(patterns) || null
+      } : null
     };
 
     return blueprint;
@@ -2112,76 +2656,349 @@
     if (!blueprint || typeof blueprint !== 'object') return null;
 
     const maxChars = Number.isFinite(options.maxChars) ? options.maxChars : 12000;
-    const maxComponents = Number.isFinite(options.maxComponents) ? options.maxComponents : 20;
-    const maxTargets = Number.isFinite(options.maxTargets) ? options.maxTargets : 12;
-    const maxComparisons = Number.isFinite(options.maxComparisons) ? options.maxComparisons : 6;
 
     const tokens = blueprint.tokens || null;
     const sections = Array.isArray(blueprint.sections) ? blueprint.sections : [];
     const components = blueprint.components?.list || [];
     const targets = blueprint.interaction?.targets || [];
     const responsive = blueprint.responsive || null;
+    const responsiveHints = Array.isArray(blueprint.responsiveHints) ? blueprint.responsiveHints : null;
+    const patterns = blueprint.patterns && typeof blueprint.patterns === 'object' ? blueprint.patterns : null;
+    const stacking = blueprint.stacking && typeof blueprint.stacking === 'object' ? blueprint.stacking : null;
+    const assets = blueprint.assets && typeof blueprint.assets === 'object' ? blueprint.assets : null;
 
-    const condensed = {
-      meta: blueprint.meta || null,
-      summary: blueprint.summary || null,
-      tokens,
-      // Put responsive early so it survives maxChars truncation.
-      responsive: responsive
-        ? {
-            breakpoints: responsive.breakpoints || null,
-            named: responsive.named || null,
-            variants: responsive.variants
-              ? {
-                  layouts: responsive.variants.layouts || null,
-                  comparisons: (responsive.variants.comparisons || []).slice(0, maxComparisons)
-                }
-              : null
-          }
-        : null,
-      sections: sections.map((s) => ({
-        id: s.id,
-        name: s.name,
-        role: s.semanticRole || null,
-        rect: s.rect || null,
-        components: Array.isArray(s.components) ? s.components.slice(0, 24) : []
-      })),
-      components: components.slice(0, maxComponents).map((c) => ({
-        id: c.id,
-        type: c.type,
-        variant: c.variant || null,
-        selector: c.selector,
-        primaryNodeId: c.primaryNodeId || null,
-        text: c.text || null
-      })),
-      interactions: targets.slice(0, maxTargets).map((t) => ({
-        selector: t.selector,
-        tag: t.tag || null,
-        semanticRole: t.semanticRole || null,
-        semanticName: t.semanticName || null,
-        accessibleRole: t.accessibleRole || null,
-        accessibleName: t.accessibleName || null,
-        availableStates: t.availableStates || null,
-        keyChanges: Array.isArray(t.keyChanges) ? t.keyChanges.slice(0, 8) : (t.keyChanges || null),
-        priority: t.priority || null
-      }))
+    const defaultCfg = {
+      maxComponents: Number.isFinite(options.maxComponents) ? options.maxComponents : 20,
+      maxTargets: Number.isFinite(options.maxTargets) ? options.maxTargets : 12,
+      maxSections: Number.isFinite(options.maxSections) ? options.maxSections : 12,
+      maxResponsiveHints: Number.isFinite(options.maxResponsiveHints) ? options.maxResponsiveHints : 6,
+      maxPatternItems: Number.isFinite(options.maxPatternItems) ? options.maxPatternItems : 8,
+      maxPatternGuides: Number.isFinite(options.maxPatternGuides) ? options.maxPatternGuides : 6,
+      maxStackingItems: Number.isFinite(options.maxStackingItems) ? options.maxStackingItems : 18,
+      maxStackingOverlays: Number.isFinite(options.maxStackingOverlays) ? options.maxStackingOverlays : 10,
+      maxAssetItems: Number.isFinite(options.maxAssetItems) ? options.maxAssetItems : 80,
+      maxSelectorChars: Number.isFinite(options.maxSelectorChars) ? options.maxSelectorChars : 180,
+      includeTokens: options.includeTokens !== false,
+      includeAssets: options.includeAssets !== false,
+      includeSections: options.includeSections !== false,
+      includeComponents: options.includeComponents !== false,
+      includeInteractions: options.includeInteractions !== false,
+      pretty: options.pretty !== false
     };
 
-    const lines = [];
-    lines.push('# UI Replica Blueprint (Condensed)');
-    lines.push('');
-    lines.push('Use the JSON below to recreate the page layout and component styles with high visual fidelity.');
-    lines.push('Focus on: layout constraints, typography, backgrounds/borders/shadows, interactive states, and responsive differences.');
-    lines.push('');
-    lines.push('```json');
-    lines.push(JSON.stringify(condensed, null, 2));
-    lines.push('```');
+    const truncateText = (value, maxLen, keep = 'end') => {
+      const s = value === null || value === undefined ? '' : String(value);
+      const max = Number(maxLen);
+      if (!Number.isFinite(max) || max <= 0) return s;
+      if (s.length <= max) return s;
+      if (max <= 8) return s.slice(0, max);
+      if (keep === 'start') return s.slice(0, max - 3) + '...';
+      return '...' + s.slice(-(max - 3));
+    };
 
-    let out = lines.join('\n');
-    if (out.length > maxChars) {
-      out = out.slice(0, Math.max(0, maxChars - 200)) + '\n...\n(Truncated)\n';
+    const compactSelector = (selector, cfg) => {
+      const s = selector === null || selector === undefined ? '' : String(selector);
+      if (!s) return null;
+      return truncateText(s, cfg.maxSelectorChars, 'end');
+    };
+
+    const pickObject = (obj, maxEntries) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+      const n = Number(maxEntries);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      const out = {};
+      let seen = 0;
+      for (const [k, v] of Object.entries(obj)) {
+        out[k] = v;
+        seen += 1;
+        if (seen >= n) break;
+      }
+      return out;
+    };
+
+    const condenseTokens = (cfg) => {
+      if (!cfg.includeTokens) return null;
+      if (!tokens || typeof tokens !== 'object') return tokens;
+      // Keep token maps bounded; full palettes can exceed prompt budgets.
+      return {
+        colors: pickObject(tokens.colors, 28),
+        typography: tokens.typography || null,
+        spacing: pickObject(tokens.spacing, 24),
+        radii: pickObject(tokens.radii, 16),
+        shadows: pickObject(tokens.shadows, 16),
+        motion: tokens.motion || null
+      };
+    };
+
+    const condensePatterns = (cfg) => {
+      if (!patterns) return null;
+      const items = Array.isArray(patterns.items) ? patterns.items : [];
+      const guide = patterns.guide && typeof patterns.guide === 'object' ? patterns.guide : null;
+
+      const out = {
+        count: patterns.count || 0,
+        totalRepeatingElements: patterns.totalRepeatingElements || 0,
+        items: items.slice(0, cfg.maxPatternItems).map((p) => ({
+          id: p.id || null,
+          containerSelector: compactSelector(p.containerSelector, cfg),
+          sampleSelector: compactSelector(p.sampleSelector, cfg),
+          count: p.count || null,
+          layoutType: p.layoutType || null,
+          gap: p.gap || null,
+          itemSize: p.itemSize || null,
+          template: p.template || null,
+          sampleSelectors: Array.isArray(p.sampleSelectors)
+            ? p.sampleSelectors.slice(0, 2).map((s) => compactSelector(s, cfg)).filter(Boolean)
+            : null
+        }))
+      };
+
+      if (guide) {
+        out.guide = {
+          total: guide.total || null,
+          guides: Array.isArray(guide.guides)
+            ? guide.guides.slice(0, cfg.maxPatternGuides).map((g) => ({
+                hint: g.hint || null,
+                container: compactSelector(g.container, cfg),
+                itemCount: g.itemCount || null,
+                layoutType: g.layoutType || null,
+                gap: g.gap || null,
+                itemSize: g.itemSize || null,
+                template: g.template || null
+              }))
+            : null,
+          note: guide.note || null
+        };
+      } else {
+        out.guide = null;
+      }
+
+      return out;
+    };
+
+    const condenseResponsive = (cfg) => {
+      if (!responsive || typeof responsive !== 'object') return null;
+
+      const out = {
+        breakpoints: responsive.breakpoints || null,
+        named: responsive.named || null,
+        // Keep this small and high-signal; full comparisons can easily exceed prompt budgets.
+        hints: responsiveHints
+          ? responsiveHints.slice(0, cfg.maxResponsiveHints).map((h) => ({
+              from: h.from || null,
+              to: h.to || null,
+              layoutChanges: Array.isArray(h.layoutChanges)
+                ? h.layoutChanges.slice(0, 6).map((c) => ({
+                    selector: compactSelector(c.selector, cfg),
+                    property: c.property || null,
+                    from: c.from || null,
+                    to: c.to || null
+                  }))
+                : [],
+              visibilityChanges: Array.isArray(h.visibilityChanges)
+                ? h.visibilityChanges.slice(0, 6).map((c) => ({
+                    selector: compactSelector(c.selector, cfg),
+                    change: c.change || null
+                  }))
+                : []
+            }))
+          : null
+      };
+
+      if (responsive.variants && typeof responsive.variants === 'object') {
+        out.variants = {
+          layouts: responsive.variants.layouts || null
+        };
+      } else {
+        out.variants = null;
+      }
+
+      return out;
+    };
+
+    const condenseStacking = (cfg) => {
+      if (!stacking) return null;
+      const top = Array.isArray(stacking.top) ? stacking.top : [];
+      const overlays = Array.isArray(stacking.overlayCandidates) ? stacking.overlayCandidates : [];
+
+      const compact = (c) => ({
+        uid: c.uid || null,
+        selector: compactSelector(c.selector, cfg),
+        rect: c.rect || null,
+        position: c.position || null,
+        zIndex: c.zIndex || null,
+        reasons: Array.isArray(c.reasons) ? c.reasons.slice(0, 6) : null,
+      });
+
+      return {
+        count: stacking.count || top.length || 0,
+        overlayCandidates: overlays.slice(0, cfg.maxStackingOverlays).map(compact),
+        top: top.slice(0, cfg.maxStackingItems).map(compact),
+        note: stacking.note || null
+      };
+    };
+
+    const condenseAssets = (cfg) => {
+      if (!cfg.includeAssets) return null;
+      if (!assets) return null;
+      const items = Array.isArray(assets.items) ? assets.items : [];
+      return {
+        total: assets.total || items.length || 0,
+        byType: assets.byType || null,
+        items: items.slice(0, cfg.maxAssetItems).map((a) => ({
+          url: a.url || null,
+          type: a.type || null,
+          source: a.source || null,
+          selector: compactSelector(a.selector, cfg)
+        })),
+        note: assets.note || null
+      };
+    };
+
+    const wrapPrompt = (condensed, indent) => {
+      const lines = [];
+      lines.push('# UI Replica Blueprint (Condensed)');
+      lines.push('');
+      lines.push('Use the JSON below to recreate the page layout and component styles with high visual fidelity.');
+      lines.push('Focus on: layout constraints, typography, backgrounds/borders/shadows, interactive states, and responsive differences.');
+      lines.push('Nodes may include `varRefs` (CSS variable mappings) and `pseudoElements` (::before/::after defaults) for higher fidelity.');
+      lines.push('');
+      lines.push('```json');
+      lines.push(JSON.stringify(condensed, null, indent));
+      lines.push('```');
+      return lines.join('\n');
+    };
+
+    const cfg = { ...defaultCfg };
+
+    for (let pass = 0; pass < 40; pass += 1) {
+      const condensed = {
+        meta: blueprint.meta || null,
+        summary: blueprint.summary || null,
+        tokens: condenseTokens(cfg),
+        patterns: condensePatterns(cfg),
+        // Put responsive early so it remains visible under maxChars.
+        responsive: condenseResponsive(cfg),
+        stacking: condenseStacking(cfg),
+        assets: condenseAssets(cfg),
+        sections: cfg.includeSections
+          ? sections.slice(0, cfg.maxSections).map((s) => ({
+              id: s.id,
+              name: s.name,
+              role: s.semanticRole || null,
+              rect: s.rect || null,
+              components: Array.isArray(s.components) ? s.components.slice(0, 16) : []
+            }))
+          : null,
+        components: cfg.includeComponents
+          ? components.slice(0, cfg.maxComponents).map((c) => ({
+              id: c.id,
+              type: c.type,
+              variant: c.variant || null,
+              selector: compactSelector(c.selector, cfg),
+              primaryNodeId: c.primaryNodeId || null,
+              text: c.text || null
+            }))
+          : null,
+        interactions: cfg.includeInteractions
+          ? targets.slice(0, cfg.maxTargets).map((t) => ({
+              selector: compactSelector(t.selector, cfg),
+              tag: t.tag || null,
+              semanticRole: t.semanticRole || null,
+              semanticName: t.semanticName || null,
+              accessibleRole: t.accessibleRole || null,
+              accessibleName: t.accessibleName || null,
+              availableStates: t.availableStates || null,
+              keyChanges: Array.isArray(t.keyChanges) ? t.keyChanges.slice(0, 8) : (t.keyChanges || null),
+              priority: t.priority || null
+            }))
+          : null
+      };
+
+      const out = wrapPrompt(condensed, cfg.pretty ? 2 : 0);
+      if (out.length <= maxChars) return out;
+
+      // Tighten until it fits.
+      if (cfg.pretty) {
+        // Whitespace is pure overhead for LLMs; compact first to preserve content.
+        cfg.pretty = false;
+        continue;
+      }
+      if (cfg.maxSelectorChars > 120) {
+        cfg.maxSelectorChars = Math.max(80, Math.floor(cfg.maxSelectorChars * 0.75));
+        continue;
+      }
+      if (cfg.maxTargets > 8) {
+        cfg.maxTargets = Math.max(6, cfg.maxTargets - 2);
+        continue;
+      }
+      if (cfg.maxComponents > 12) {
+        cfg.maxComponents = Math.max(8, cfg.maxComponents - 4);
+        continue;
+      }
+      if (cfg.maxSections > 8) {
+        cfg.maxSections = Math.max(6, cfg.maxSections - 2);
+        continue;
+      }
+      if (cfg.maxResponsiveHints > 4) {
+        cfg.maxResponsiveHints = Math.max(3, cfg.maxResponsiveHints - 1);
+        continue;
+      }
+      if (cfg.maxAssetItems > 40) {
+        cfg.maxAssetItems = Math.max(20, Math.floor(cfg.maxAssetItems * 0.7));
+        continue;
+      }
+      if (cfg.maxPatternItems > 4) {
+        cfg.maxPatternItems = Math.max(4, cfg.maxPatternItems - 2);
+        continue;
+      }
+      if (cfg.maxPatternGuides > 4) {
+        cfg.maxPatternGuides = Math.max(3, cfg.maxPatternGuides - 1);
+        continue;
+      }
+      if (cfg.maxStackingItems > 12) {
+        cfg.maxStackingItems = Math.max(10, cfg.maxStackingItems - 4);
+        continue;
+      }
+      if (cfg.maxStackingOverlays > 8) {
+        cfg.maxStackingOverlays = Math.max(6, cfg.maxStackingOverlays - 2);
+        continue;
+      }
+      if (cfg.includeInteractions) {
+        cfg.includeInteractions = false;
+        continue;
+      }
+      if (cfg.includeComponents) {
+        cfg.includeComponents = false;
+        continue;
+      }
+      if (cfg.includeSections) {
+        cfg.includeSections = false;
+        continue;
+      }
+      if (cfg.includeAssets) {
+        cfg.includeAssets = false;
+        continue;
+      }
+      if (cfg.includeTokens) {
+        cfg.includeTokens = false;
+        continue;
+      }
+
+      // As a last resort, return a minimal prompt and hard-cap the size.
+      const minimal = {
+        meta: blueprint.meta || null,
+        summary: blueprint.summary || null,
+        patterns: condensePatterns({ ...cfg, maxPatternItems: 4, maxPatternGuides: 3, maxSelectorChars: 80 }),
+        responsive: condenseResponsive({ ...cfg, maxSelectorChars: 80, maxResponsiveHints: 3 }),
+        stacking: condenseStacking({ ...cfg, maxSelectorChars: 80, maxStackingItems: 10, maxStackingOverlays: 6 }),
+        assets: condenseAssets({ ...cfg, maxSelectorChars: 80, maxAssetItems: 24 })
+      };
+      const minimalOut = wrapPrompt(minimal, cfg.pretty ? 2 : 0);
+      return minimalOut.length <= maxChars ? minimalOut : minimalOut.slice(0, maxChars);
     }
-    return out;
+
+    return wrapPrompt({ meta: blueprint.meta || null, summary: blueprint.summary || null }, 0).slice(0, maxChars);
   }
 
   // --------------------------------------------

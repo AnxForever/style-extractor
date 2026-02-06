@@ -72,6 +72,20 @@
     return { success: true, api: Object.keys(window.__seBlueprint) };
   });
 
+  test('Scripts loaded - __sePatternDetect', () => {
+    if (!window.__sePatternDetect?.installed) {
+      return { success: false, error: 'pattern-detect.js not loaded' };
+    }
+    return { success: true, api: Object.keys(window.__sePatternDetect) };
+  });
+
+  test('Scripts loaded - __seCSS', () => {
+    if (!window.__seCSS?.installed) {
+      return { success: false, error: 'css-parser.js not loaded' };
+    }
+    return { success: true, api: Object.keys(window.__seCSS) };
+  });
+
   // ============================================
   // Test 2: 结构提取
   // ============================================
@@ -154,6 +168,149 @@
       relationships: Object.keys(blueprint.relationships || {}),
       interactionTargets: blueprint.interaction?.targets?.length || 0,
       responsiveVariants: blueprint.responsive?.variants ? Object.keys(blueprint.responsive.variants.layouts || {}).length : 0
+    };
+  });
+
+  // ============================================
+  // Test 2.6: CSS reverse map and font sources
+  // ============================================
+
+  test('CSS reverse map - buildReverseMap', () => {
+    if (!window.__seCSS?.buildReverseMap) {
+      return { success: false, error: 'buildReverseMap not available' };
+    }
+    const result = window.__seCSS.buildReverseMap();
+    if (!result || typeof result !== 'object') {
+      return { success: false, error: 'buildReverseMap returned invalid result' };
+    }
+    return {
+      success: true,
+      mapSize: result.map ? Object.keys(result.map).length : 0,
+      hasCategories: !!result.categories
+    };
+  });
+
+  test('CSS reverse map - lookupVariable', () => {
+    if (!window.__seCSS?.lookupVariable) {
+      return { success: false, error: 'lookupVariable not available' };
+    }
+    // lookupVariable should return null or an object for any value
+    const result = window.__seCSS.lookupVariable('nonexistent-value-xyz');
+    return {
+      success: true,
+      returnsNullForUnknown: result === null || result === undefined,
+      type: typeof result
+    };
+  });
+
+  test('CSS font sources - extractFontSources', () => {
+    if (!window.__seCSS?.extractFontSources) {
+      return { success: false, error: 'extractFontSources not available' };
+    }
+    const result = window.__seCSS.extractFontSources();
+    if (!result || typeof result !== 'object') {
+      return { success: false, error: 'extractFontSources returned invalid result' };
+    }
+    return {
+      success: true,
+      hasGoogleFonts: 'google' in result || 'googleFonts' in result,
+      hasTypekit: 'typekit' in result || 'adobeFonts' in result,
+      hasFamilies: Array.isArray(result.families) || Array.isArray(result.allFamilies)
+    };
+  });
+
+  // ============================================
+  // Test 2.7: Pattern detection
+  // ============================================
+
+  test('Pattern detection - detectPatterns', () => {
+    if (!window.__sePatternDetect?.detectPatterns) {
+      return { success: false, error: 'detectPatterns not available' };
+    }
+    const patterns = window.__sePatternDetect.detectPatterns();
+    if (!Array.isArray(patterns)) {
+      return { success: false, error: 'detectPatterns did not return array' };
+    }
+    return {
+      success: true,
+      patternCount: patterns.length,
+      sample: patterns.length > 0 ? {
+        fingerprint: patterns[0].fingerprint,
+        count: patterns[0].count,
+        selector: patterns[0].selector
+      } : null
+    };
+  });
+
+  test('Pattern detection - fingerprint', () => {
+    if (!window.__sePatternDetect?.fingerprint) {
+      return { success: false, error: 'fingerprint not available' };
+    }
+    const el = document.body.firstElementChild;
+    if (!el) {
+      return { success: true, skipped: true, reason: 'No child elements in body' };
+    }
+    const fp = window.__sePatternDetect.fingerprint(el);
+    return {
+      success: typeof fp === 'string',
+      fingerprint: fp,
+      type: typeof fp
+    };
+  });
+
+  test('Pattern detection - generatePatternGuide', () => {
+    if (!window.__sePatternDetect?.generatePatternGuide) {
+      return { success: false, error: 'generatePatternGuide not available' };
+    }
+    const guide = window.__sePatternDetect.generatePatternGuide();
+    return {
+      success: typeof guide === 'string' || typeof guide === 'object',
+      type: typeof guide,
+      length: typeof guide === 'string' ? guide.length : JSON.stringify(guide).length
+    };
+  });
+
+  // ============================================
+  // Test 2.8: Blueprint new fields (patterns, pseudo-elements, varRefs)
+  // ============================================
+
+  test('Blueprint new fields - patterns and responsiveHints', () => {
+    if (!window.__seBlueprint?.installed) {
+      return { success: false, error: 'replica-blueprint.js not loaded' };
+    }
+    const componentsData = window.__seComponents?.generateReport?.();
+    const blueprint = window.__seBlueprint.build({
+      structure: structureData,
+      components: componentsData
+    });
+    return {
+      success: true,
+      hasPatterns: Array.isArray(blueprint.patterns),
+      patternCount: Array.isArray(blueprint.patterns) ? blueprint.patterns.length : 0,
+      hasResponsiveHints: blueprint.responsiveHints !== undefined,
+      summaryHasPatternCount: blueprint.summary?.patternCount !== undefined
+    };
+  });
+
+  test('Blueprint new fields - toLLMPrompt includes patterns', () => {
+    if (!window.__seBlueprint?.toLLMPrompt) {
+      return { success: false, error: 'toLLMPrompt not available' };
+    }
+    const componentsData = window.__seComponents?.generateReport?.();
+    const blueprint = window.__seBlueprint.build({
+      structure: structureData,
+      components: componentsData
+    });
+    const prompt = window.__seBlueprint.toLLMPrompt(blueprint);
+    if (!prompt || typeof prompt !== 'string') {
+      return { success: false, error: 'toLLMPrompt returned non-string' };
+    }
+    return {
+      success: true,
+      length: prompt.length,
+      includesPatterns: prompt.includes('patterns'),
+      includesVarRefs: prompt.includes('varRefs'),
+      includesPseudo: prompt.includes('pseudoElements')
     };
   });
 
