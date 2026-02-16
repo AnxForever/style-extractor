@@ -420,6 +420,120 @@
   });
 
   // ============================================
+  // Test 5: StyleKit Adapter (Recipes, Prompt, Confidence)
+  // ============================================
+
+  test('Scripts loaded - __seStyleKit', () => {
+    if (!window.__seStyleKit?.installed) {
+      return { success: false, error: 'stylekit-adapter.js not loaded' };
+    }
+    return {
+      success: true,
+      api: Object.keys(window.__seStyleKit),
+      hasRecipeAPI: typeof window.__seStyleKit.generateRecipes === 'function',
+      hasPromptAPI: typeof window.__seStyleKit.generatePrompt === 'function',
+      hasConfidenceAPI: typeof window.__seStyleKit.getConfidenceReport === 'function',
+    };
+  });
+
+  test('StyleKit - extract() full pipeline', () => {
+    const result = window.__seStyleKit.extract();
+    if (!result?.files) {
+      return { success: false, error: 'extract() returned no files' };
+    }
+    return {
+      success: true,
+      fileCount: Object.keys(result.files).length,
+      hasRecipes: 'style-recipes.ts' in result.files,
+      hasPrompt: 'design-system-prompt.md' in result.files,
+      hasTokens: 'style-tokens.json' in result.files,
+    };
+  });
+
+  test('StyleKit - generateRecipes()', () => {
+    const ts = window.__seStyleKit.generateRecipes();
+    if (typeof ts !== 'string') {
+      return { success: false, error: 'generateRecipes() did not return string' };
+    }
+    return {
+      success: true,
+      length: ts.length,
+      hasImport: ts.includes('createStyleRecipes'),
+      hasFactory: ts.includes('createStyleRecipes('),
+    };
+  });
+
+  test('StyleKit - getRecipes() structure', () => {
+    const recipes = window.__seStyleKit.getRecipes();
+    if (typeof recipes !== 'object') {
+      return { success: false, error: 'getRecipes() did not return object' };
+    }
+    const types = Object.keys(recipes);
+    const valid = types.every(t => {
+      const r = recipes[t];
+      return r.id && r.skeleton && Array.isArray(r.parameters) && r.variants && Array.isArray(r.slots);
+    });
+    return {
+      success: true,
+      componentTypes: types,
+      allValid: valid,
+    };
+  });
+
+  test('StyleKit - generatePrompt()', () => {
+    const prompt = window.__seStyleKit.generatePrompt();
+    if (typeof prompt !== 'string') {
+      return { success: false, error: 'generatePrompt() did not return string' };
+    }
+    return {
+      success: true,
+      length: prompt.length,
+      hasRole: prompt.includes('<role>'),
+      hasDesignSystem: prompt.includes('<design-system>'),
+      hasTokens: prompt.includes('## Design Token System'),
+      hasComponents: prompt.includes('## Component Styling'),
+    };
+  });
+
+  test('StyleKit - getConfidenceReport()', () => {
+    const report = window.__seStyleKit.getConfidenceReport();
+    if (typeof report !== 'object') {
+      return { success: false, error: 'getConfidenceReport() did not return object' };
+    }
+    const validLevels = ['high', 'medium', 'low'];
+    return {
+      success: validLevels.includes(report.overall),
+      overall: report.overall,
+      componentCount: Object.keys(report.components).length,
+      colorCount: Object.keys(report.colors).length,
+    };
+  });
+
+  // ============================================
+  // Test 6: Unified Entry Point (extractStyle)
+  // ============================================
+
+  test('extractStyle - with recipe/prompt/confidence options', () => {
+    if (typeof window.extractStyle !== 'function') {
+      return { success: false, error: 'extractStyle not available' };
+    }
+    const result = window.extractStyle({
+      preset: 'components',
+      includeRecipes: true,
+      includePrompt: true,
+      includeConfidence: true,
+    });
+    return {
+      success: true,
+      hasRecipes: !!result.data?.recipes,
+      hasRecipesFile: typeof result.data?.recipesFile === 'string',
+      hasPrompt: typeof result.data?.designSystemPrompt === 'string',
+      hasConfidence: !!result.data?.confidenceReport,
+      confidenceOverall: result.data?.confidenceReport?.overall,
+    };
+  });
+
+  // ============================================
   // Helper Functions
   // ============================================
 
