@@ -731,6 +731,7 @@
     } = options;
 
     const replicaMode = preset === 'replica';
+    const fullMode = preset === 'full';
 
     // Run extraction
     const result = requestedModules
@@ -767,8 +768,8 @@
       }
     }
 
-    // Add StyleKit recipes if requested
-    if (includeRecipes && window.__seStyleKit?.installed) {
+    // Add StyleKit recipes if requested (auto-include for full/replica presets)
+    if ((includeRecipes || fullMode || replicaMode) && window.__seStyleKit?.installed) {
       try {
         result.data.recipes = window.__seStyleKit.getRecipes();
         result.data.recipesFile = window.__seStyleKit.generateRecipes();
@@ -777,8 +778,8 @@
       }
     }
 
-    // Add AI-ready design system prompt if requested
-    if (includePrompt && window.__seStyleKit?.installed) {
+    // Add AI-ready design system prompt if requested (auto-include for full/replica presets)
+    if ((includePrompt || fullMode || replicaMode) && window.__seStyleKit?.installed) {
       try {
         result.data.designSystemPrompt = window.__seStyleKit.generatePrompt();
       } catch (e) {
@@ -786,8 +787,8 @@
       }
     }
 
-    // Add confidence report if requested
-    if (includeConfidence && window.__seStyleKit?.installed) {
+    // Add confidence report if requested (auto-include for full preset)
+    if ((includeConfidence || fullMode) && window.__seStyleKit?.installed) {
       try {
         result.data.confidenceReport = window.__seStyleKit.getConfidenceReport();
       } catch (e) {
