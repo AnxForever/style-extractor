@@ -890,6 +890,54 @@
       }
     }
 
+    // Fallback: if CSS rule iteration yielded no states (likely cross-origin),
+    // use synchronous event simulation to capture hover/focus states
+    const hasAnyState = states.hover || states.active || states.focus || states.focusVisible;
+    if (!hasAnyState) {
+      try {
+        // Hover: dispatch mouseenter, read computed style, dispatch mouseleave
+        el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        const hoverStyles = extractStyles(el);
+        el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+
+        // Compare hover vs default — only keep if different
+        const hoverDiff = {};
+        for (const prop of STYLE_PROPERTIES) {
+          if (hoverStyles[prop] && hoverStyles[prop] !== states.default[prop]) {
+            hoverDiff[prop] = hoverStyles[prop];
+          }
+        }
+        if (Object.keys(hoverDiff).length > 0) {
+          states.hover = { ...states.default, ...hoverDiff };
+        }
+
+        // Focus: use el.focus() if focusable
+        if (typeof el.focus === 'function') {
+          const prev = document.activeElement;
+          el.focus();
+          const focusStyles = extractStyles(el);
+          el.blur();
+          if (prev && typeof prev.focus === 'function') {
+            try { prev.focus(); } catch (e) { /* ignore */ }
+          }
+
+          const focusDiff = {};
+          for (const prop of STYLE_PROPERTIES) {
+            if (focusStyles[prop] && focusStyles[prop] !== states.default[prop]) {
+              focusDiff[prop] = focusStyles[prop];
+            }
+          }
+          if (Object.keys(focusDiff).length > 0) {
+            states.focus = { ...states.default, ...focusDiff };
+          }
+        }
+      } catch (e) {
+        debugWarn('Event simulation fallback failed:', e.message);
+      }
+    }
+
     return {
       ok: true,
       selector: cssPath(el),

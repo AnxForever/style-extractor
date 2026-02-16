@@ -183,13 +183,17 @@
   }
 
   function normalizeColor(color) {
-    // Normalize rgba to hex, preserving alpha channel
+    if (!color || typeof color !== 'string') return color;
+
+    // Already hex
+    if (color.startsWith('#')) return color;
+
+    // rgb/rgba → hex
     if (color.startsWith('rgb')) {
       const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
       if (match) {
         const [, r, g, b, a] = match;
         const hex = '#' + [r, g, b].map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
-        // Preserve alpha if present and not fully opaque
         if (a !== undefined && parseFloat(a) < 1) {
           const alpha = Math.round(parseFloat(a) * 255).toString(16).padStart(2, '0');
           return hex + alpha;
@@ -197,6 +201,119 @@
         return hex;
       }
     }
+
+    // hsl/hsla → hex
+    if (color.startsWith('hsl')) {
+      const match = color.match(/hsla?\(([\d.]+),\s*([\d.]+)%?,\s*([\d.]+)%?(?:,\s*([\d.]+))?\)/);
+      if (match) {
+        const h = parseFloat(match[1]) / 360;
+        const s = parseFloat(match[2]) / 100;
+        const l = parseFloat(match[3]) / 100;
+        const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
+
+        let r, g, b;
+        if (s === 0) {
+          r = g = b = l;
+        } else {
+          const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+          };
+          const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+          const p = 2 * l - q;
+          r = hue2rgb(p, q, h + 1/3);
+          g = hue2rgb(p, q, h);
+          b = hue2rgb(p, q, h - 1/3);
+        }
+
+        const toHex = v => Math.round(v * 255).toString(16).padStart(2, '0');
+        const hex = '#' + toHex(r) + toHex(g) + toHex(b);
+        if (a < 1) {
+          return hex + Math.round(a * 255).toString(16).padStart(2, '0');
+        }
+        return hex;
+      }
+    }
+
+    // oklch() → hex (approximate conversion via sRGB)
+    if (color.startsWith('oklch')) {
+      const match = color.match(/oklch\(([\d.]+%?)\s+([\d.]+%?)\s+([\d.]+(?:deg)?)/);
+      if (match) {
+        let L = parseFloat(match[1]);
+        if (match[1].includes('%')) L /= 100;
+        let C = parseFloat(match[2]);
+        if (match[2].includes('%')) C = C / 100 * 0.4;
+        const H = parseFloat(match[3]) * Math.PI / 180;
+
+        // OKLCH → OKLab
+        const a_lab = C * Math.cos(H);
+        const b_lab = C * Math.sin(H);
+
+        // OKLab → linear sRGB (approximate)
+        const l_ = L + 0.3963377774 * a_lab + 0.2158037573 * b_lab;
+        const m_ = L - 0.1055613458 * a_lab - 0.0638541728 * b_lab;
+        const s_ = L - 0.0894841775 * a_lab - 1.2914855480 * b_lab;
+
+        const l3 = l_ * l_ * l_;
+        const m3 = m_ * m_ * m_;
+        const s3 = s_ * s_ * s_;
+
+        let rLin = 4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3;
+        let gLin = -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3;
+        let bLin = -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3;
+
+        // Linear sRGB → sRGB gamma
+        const gamma = v => v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055;
+        const clamp = v => Math.max(0, Math.min(255, Math.round(gamma(v) * 255)));
+
+        return '#' + [rLin, gLin, bLin].map(v => clamp(v).toString(16).padStart(2, '0')).join('');
+      }
+    }
+
+    // color(srgb ...) → hex
+    if (color.startsWith('color(')) {
+      const match = color.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+      if (match) {
+        const toHex = v => Math.max(0, Math.min(255, Math.round(parseFloat(v) * 255))).toString(16).padStart(2, '0');
+        return '#' + toHex(match[1]) + toHex(match[2]) + toHex(match[3]);
+      }
+    }
+
+    // lab() → hex (CIELab to sRGB approximate)
+    if (color.startsWith('lab(')) {
+      const match = color.match(/lab\(([\d.]+%?)\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+      if (match) {
+        let L = parseFloat(match[1]);
+        if (match[1].includes('%')) L = L;
+        const a_val = parseFloat(match[2]);
+        const b_val = parseFloat(match[3]);
+
+        // Lab → XYZ D65
+        const fy = (L + 16) / 116;
+        const fx = a_val / 500 + fy;
+        const fz = fy - b_val / 200;
+        const delta = 6/29;
+        const xyz = f => f > delta ? f * f * f : 3 * delta * delta * (f - 4/29);
+        const X = 0.95047 * xyz(fx);
+        const Y = 1.00000 * xyz(fy);
+        const Z = 1.08883 * xyz(fz);
+
+        // XYZ → linear sRGB
+        let rLin = 3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z;
+        let gLin = -0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z;
+        let bLin = 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z;
+
+        const gamma = v => v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055;
+        const clamp = v => Math.max(0, Math.min(255, Math.round(gamma(v) * 255)));
+
+        return '#' + [rLin, gLin, bLin].map(v => clamp(v).toString(16).padStart(2, '0')).join('');
+      }
+    }
+
     return color;
   }
 
