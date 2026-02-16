@@ -963,6 +963,139 @@
     if (styles.cursor === 'pointer') classes.push('cursor-pointer');
     if (styles.cursor === 'not-allowed') classes.push('cursor-not-allowed');
 
+    // Line height
+    if (styles.lineHeight) {
+      const lh = parseFloat(styles.lineHeight);
+      const fs = parseFloat(styles.fontSize) || 16;
+      const ratio = lh / fs;
+      if (ratio <= 1) classes.push('leading-none');
+      else if (ratio <= 1.25) classes.push('leading-tight');
+      else if (ratio <= 1.375) classes.push('leading-snug');
+      else if (ratio <= 1.5) classes.push('leading-normal');
+      else if (ratio <= 1.625) classes.push('leading-relaxed');
+      else classes.push('leading-loose');
+    }
+
+    // Letter spacing
+    if (styles.letterSpacing) {
+      const ls = parseFloat(styles.letterSpacing);
+      if (ls < -0.04) classes.push('tracking-tighter');
+      else if (ls < -0.01) classes.push('tracking-tight');
+      else if (ls > 0.1) classes.push('tracking-widest');
+      else if (ls > 0.05) classes.push('tracking-wider');
+      else if (ls > 0.02) classes.push('tracking-wide');
+    }
+
+    // Text transform
+    if (styles.textTransform === 'uppercase') classes.push('uppercase');
+    else if (styles.textTransform === 'lowercase') classes.push('lowercase');
+    else if (styles.textTransform === 'capitalize') classes.push('capitalize');
+
+    // Gap
+    const gap = pxToTwSpacing(styles.gap);
+    if (gap) classes.push(`gap-${gap}`);
+    const colGap = pxToTwSpacing(styles.columnGap);
+    if (colGap) classes.push(`gap-x-${colGap}`);
+    const rowGap = pxToTwSpacing(styles.rowGap);
+    if (rowGap) classes.push(`gap-y-${rowGap}`);
+
+    // Display
+    if (styles.display === 'flex') classes.push('flex');
+    else if (styles.display === 'inline-flex') classes.push('inline-flex');
+    else if (styles.display === 'grid') classes.push('grid');
+    else if (styles.display === 'inline-block') classes.push('inline-block');
+    else if (styles.display === 'none') classes.push('hidden');
+
+    // Flex direction
+    if (styles.flexDirection === 'column') classes.push('flex-col');
+    else if (styles.flexDirection === 'column-reverse') classes.push('flex-col-reverse');
+    else if (styles.flexDirection === 'row-reverse') classes.push('flex-row-reverse');
+
+    // Align items
+    if (styles.alignItems === 'center') classes.push('items-center');
+    else if (styles.alignItems === 'flex-start') classes.push('items-start');
+    else if (styles.alignItems === 'flex-end') classes.push('items-end');
+    else if (styles.alignItems === 'stretch') classes.push('items-stretch');
+    else if (styles.alignItems === 'baseline') classes.push('items-baseline');
+
+    // Justify content
+    if (styles.justifyContent === 'center') classes.push('justify-center');
+    else if (styles.justifyContent === 'flex-start') classes.push('justify-start');
+    else if (styles.justifyContent === 'flex-end') classes.push('justify-end');
+    else if (styles.justifyContent === 'space-between') classes.push('justify-between');
+    else if (styles.justifyContent === 'space-around') classes.push('justify-around');
+    else if (styles.justifyContent === 'space-evenly') classes.push('justify-evenly');
+
+    // Width
+    if (styles.width === '100%') classes.push('w-full');
+    else if (styles.width === 'auto') { /* skip */ }
+    else {
+      const w = pxToTwSpacing(styles.width);
+      if (w) classes.push(`w-${w}`);
+    }
+
+    // Height
+    if (styles.height === '100%') classes.push('h-full');
+    else if (styles.height === 'auto') { /* skip */ }
+    else if (styles.height === '100vh') classes.push('h-screen');
+
+    // Max width
+    if (styles.maxWidth) {
+      const mw = parseFloat(styles.maxWidth);
+      if (mw <= 320) classes.push('max-w-xs');
+      else if (mw <= 384) classes.push('max-w-sm');
+      else if (mw <= 448) classes.push('max-w-md');
+      else if (mw <= 512) classes.push('max-w-lg');
+      else if (mw <= 576) classes.push('max-w-xl');
+      else if (mw <= 672) classes.push('max-w-2xl');
+      else if (mw <= 768) classes.push('max-w-3xl');
+      else if (mw <= 896) classes.push('max-w-4xl');
+      else if (mw <= 1024) classes.push('max-w-5xl');
+      else if (mw <= 1152) classes.push('max-w-6xl');
+      else if (mw <= 1280) classes.push('max-w-7xl');
+      else if (styles.maxWidth === 'none') classes.push('max-w-none');
+    }
+
+    // Overflow
+    if (styles.overflow === 'hidden') classes.push('overflow-hidden');
+    else if (styles.overflow === 'auto') classes.push('overflow-auto');
+    else if (styles.overflow === 'scroll') classes.push('overflow-scroll');
+
+    // Position
+    if (styles.position === 'relative') classes.push('relative');
+    else if (styles.position === 'absolute') classes.push('absolute');
+    else if (styles.position === 'fixed') classes.push('fixed');
+    else if (styles.position === 'sticky') classes.push('sticky');
+
+    // Z-index
+    if (styles.zIndex && styles.zIndex !== 'auto') {
+      const z = parseInt(styles.zIndex, 10);
+      if (z === 0) classes.push('z-0');
+      else if (z <= 10) classes.push('z-10');
+      else if (z <= 20) classes.push('z-20');
+      else if (z <= 30) classes.push('z-30');
+      else if (z <= 40) classes.push('z-40');
+      else if (z <= 50) classes.push('z-50');
+    }
+
+    // Backdrop filter (blur)
+    if (styles.backdropFilter) {
+      const blurMatch = styles.backdropFilter.match(/blur\((\d+(?:\.\d+)?)px\)/);
+      if (blurMatch) {
+        const px = parseFloat(blurMatch[1]);
+        if (px <= 4) classes.push('backdrop-blur-sm');
+        else if (px <= 8) classes.push('backdrop-blur');
+        else if (px <= 12) classes.push('backdrop-blur-md');
+        else if (px <= 16) classes.push('backdrop-blur-lg');
+        else if (px <= 24) classes.push('backdrop-blur-xl');
+        else classes.push('backdrop-blur-2xl');
+      }
+    }
+
+    // Text decoration
+    if (styles.textDecoration?.includes('underline')) classes.push('underline');
+    else if (styles.textDecoration?.includes('line-through')) classes.push('line-through');
+
     return classes;
   }
 
@@ -1308,6 +1441,240 @@ ${describeComponentStates('badge') !== 'Not detected' ? '\n### Badges\n' + descr
   }
 
   // ============================================
+  // Style Tokens Generation (createStyleTokens format)
+  // ============================================
+
+  function generateTokensTypeScript(normalizedData) {
+    const id = toSafeIdentifier(normalizedData.id);
+    const tokens = normalizedData.tokens || {};
+    const components = normalizedData.components || {};
+
+    // --- Border tokens ---
+    function deriveBorder() {
+      // Look at the most common border from extracted components
+      const allBorders = [];
+      for (const items of Object.values(components)) {
+        for (const item of (items || [])) {
+          if (item.styles?.borderWidth) allBorders.push(item.styles);
+        }
+      }
+      const first = allBorders[0] || {};
+      const bw = borderWidthToTw(first.borderWidth);
+      const bc = colorToTw(first.borderColor);
+      const br = borderRadiusToTw(first.borderRadius);
+      return {
+        width: bw || 'border',
+        color: bc ? `border-${bc}` : 'border-gray-200',
+        radius: br || 'rounded-lg',
+        style: 'border-solid',
+      };
+    }
+
+    // --- Shadow tokens ---
+    function deriveShadow() {
+      const allShadows = [];
+      for (const items of Object.values(components)) {
+        for (const item of (items || [])) {
+          if (item.styles?.boxShadow && item.styles.boxShadow !== 'none') {
+            allShadows.push(item.styles.boxShadow);
+          }
+        }
+      }
+      if (!allShadows.length) {
+        return {
+          sm: 'shadow-sm', md: 'shadow-md', lg: 'shadow-lg',
+          none: 'shadow-none', hover: 'hover:shadow-lg', focus: 'focus:shadow-md',
+        };
+      }
+      // Use the raw box-shadow value if it looks like a hard-edge shadow
+      const raw = allShadows[0];
+      const isHardEdge = raw && !raw.includes('blur') && /\d+px\s+\d+px\s+0px/.test(raw);
+      if (isHardEdge) {
+        return {
+          sm: `shadow-[${raw.replace(/rgba?\([^)]+\)/, 'rgba(0,0,0,0.15)')}]`,
+          md: `shadow-[${raw}]`,
+          lg: `shadow-[${raw.replace(/(\d+)px/g, (_, n) => (parseInt(n) * 1.5) + 'px')}]`,
+          none: 'shadow-none',
+          hover: 'hover:shadow-none',
+          focus: 'focus:shadow-md',
+        };
+      }
+      const tw = boxShadowToTw(raw);
+      return {
+        sm: 'shadow-sm', md: tw || 'shadow-md', lg: 'shadow-lg',
+        none: 'shadow-none', hover: `hover:${tw === 'shadow-lg' ? 'shadow-xl' : 'shadow-lg'}`, focus: 'focus:shadow-md',
+      };
+    }
+
+    // --- Interaction tokens ---
+    function deriveInteraction() {
+      const result = { transition: 'transition-all duration-200' };
+      for (const items of Object.values(components)) {
+        const first = (items || [])[0];
+        if (!first?.states) continue;
+        const def = first.states.default || first.styles || {};
+        if (first.states.hover) {
+          const diff = stateStyleDiff(def, first.states.hover);
+          const scaleCls = diff.find(c => c.includes('scale'));
+          const translateCls = diff.find(c => c.includes('translate'));
+          if (scaleCls) result.hoverScale = `hover:${scaleCls}`;
+          if (translateCls) result.hoverTranslate = `hover:${translateCls}`;
+        }
+        if (first.states.active) {
+          const diff = stateStyleDiff(def, first.states.active);
+          if (diff.length) result.active = diff.map(c => `active:${c}`).join(' ');
+        }
+        // Extract transition duration
+        if (first.styles?.transitionDuration && first.styles.transitionDuration !== '0s') {
+          const ms = parseFloat(first.styles.transitionDuration) * 1000;
+          const dur = ms <= 150 ? '150' : ms <= 200 ? '200' : ms <= 300 ? '300' : '500';
+          result.transition = `transition-all duration-${dur}`;
+        }
+        break; // Use first component with states
+      }
+      return result;
+    }
+
+    // --- Typography tokens ---
+    function deriveTypography() {
+      const typo = tokens.typography || {};
+      const families = typo.fontFamily || {};
+      const sizes = typo.fontSize || {};
+
+      // Determine heading/body font classes
+      const headingFont = families.primary ? `font-[${families.primary.split(',')[0].replace(/['"]/g, '').trim()}]` : 'font-bold tracking-tight';
+      const bodyFont = families.secondary || families.primary ? `font-sans` : 'font-sans';
+
+      // Map extracted font sizes to responsive Tailwind classes
+      const sizeEntries = Object.entries(sizes).sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]));
+      const twSizes = sizeEntries.map(([, v]) => fontSizeToTw(v)).filter(Boolean);
+
+      return {
+        heading: headingFont.includes('font-[') ? `${headingFont} font-bold tracking-tight` : headingFont,
+        body: bodyFont,
+        mono: families.mono ? `font-[${families.mono.split(',')[0].replace(/['"]/g, '').trim()}]` : 'font-mono',
+        sizes: {
+          hero: twSizes[0] ? `${twSizes[0]} md:${twSizes[0].replace('text-', 'text-')}` : 'text-4xl md:text-6xl lg:text-8xl',
+          h1: twSizes[1] || 'text-3xl md:text-5xl',
+          h2: twSizes[2] || 'text-2xl md:text-4xl',
+          h3: twSizes[3] || 'text-xl md:text-2xl',
+          body: twSizes[4] || 'text-sm md:text-base',
+          small: twSizes[5] || 'text-xs md:text-sm',
+        },
+      };
+    }
+
+    // --- Spacing tokens ---
+    function deriveSpacing() {
+      const spacing = tokens.spacing || {};
+      const sorted = Object.entries(spacing)
+        .filter(([, v]) => typeof v === 'number')
+        .sort((a, b) => b[1] - a[1]);
+      const twVals = sorted.map(([k]) => pxToTwSpacing(k + 'px')).filter(Boolean);
+      return {
+        section: twVals[0] ? `py-${twVals[0]} md:py-${twVals[1] || twVals[0]}` : 'py-12 md:py-20 lg:py-28',
+        container: 'px-4 md:px-8 lg:px-12',
+        card: twVals[2] ? `p-${twVals[2]} md:p-${twVals[3] || twVals[2]}` : 'p-5 md:p-8',
+        gap: {
+          sm: 'gap-3 md:gap-4',
+          md: 'gap-4 md:gap-6',
+          lg: 'gap-6 md:gap-10',
+        },
+      };
+    }
+
+    // --- Color tokens (Tailwind class format) ---
+    function deriveColors() {
+      const semantic = tokens.colors?.semantic || {};
+      const bgPrimary = colorToTw(semantic.background);
+      const bgSecondary = colorToTw(semantic.surfaceAlt || semantic.surface);
+      const accentColors = [semantic.primary, semantic.accent, semantic.secondary]
+        .filter(Boolean)
+        .map(c => { const tw = colorToTw(c); return tw ? `bg-${tw}` : null; })
+        .filter(Boolean);
+
+      const textPrimary = colorToTw(semantic.text);
+      const textSecondary = colorToTw(semantic.textMuted);
+
+      // Button colors from component detection
+      const buttons = components.button || [];
+      let btnPrimary = '';
+      let btnSecondary = '';
+      if (buttons.length >= 1) {
+        const s = buttons[0].styles || {};
+        const bg = colorToTw(s.backgroundColor);
+        const tx = colorToTw(s.color);
+        btnPrimary = [bg ? `bg-${bg}` : null, tx ? `text-${tx}` : null].filter(Boolean).join(' ');
+      }
+      if (buttons.length >= 2) {
+        const s = buttons[1].styles || {};
+        const bg = colorToTw(s.backgroundColor);
+        const tx = colorToTw(s.color);
+        btnSecondary = [bg ? `bg-${bg}` : null, tx ? `text-${tx}` : null].filter(Boolean).join(' ');
+      }
+
+      return {
+        background: {
+          primary: bgPrimary ? `bg-${bgPrimary}` : 'bg-white',
+          secondary: bgSecondary ? `bg-${bgSecondary}` : 'bg-gray-50',
+          accent: accentColors.length ? accentColors : ['bg-blue-500'],
+        },
+        text: {
+          primary: textPrimary ? `text-${textPrimary}` : 'text-gray-900',
+          secondary: textSecondary ? `text-${textSecondary}` : 'text-gray-600',
+          muted: 'text-gray-400',
+        },
+        button: {
+          primary: btnPrimary || 'bg-blue-500 text-white',
+          secondary: btnSecondary || 'bg-gray-200 text-gray-800',
+        },
+      };
+    }
+
+    // --- Forbidden & Required ---
+    function deriveForbidden() {
+      // Derive from what the site does NOT use
+      return { classes: [], patterns: [], reasons: {} };
+    }
+
+    function deriveRequired() {
+      const result = { button: [], card: [], input: [] };
+      for (const type of ['button', 'card', 'input']) {
+        const items = components[type];
+        if (!items?.length) continue;
+        const base = stylesToTailwind(items[0].styles);
+        result[type] = base.length ? base : [];
+      }
+      return result;
+    }
+
+    // --- Assemble ---
+    const tokensObj = {
+      border: deriveBorder(),
+      shadow: deriveShadow(),
+      interaction: deriveInteraction(),
+      typography: deriveTypography(),
+      spacing: deriveSpacing(),
+      colors: deriveColors(),
+      forbidden: deriveForbidden(),
+      required: deriveRequired(),
+    };
+
+    // Clean undefined values for JSON.stringify
+    const cleaned = JSON.parse(JSON.stringify(tokensObj));
+    const tokensJson = JSON.stringify(cleaned, null, 2);
+
+    return `// StyleKit Token Definition
+// Generated by style-extractor
+// Source: ${normalizedData.source?.url || 'unknown'}
+
+import { createStyleTokens } from "./token-defaults";
+
+export const ${id}Tokens = createStyleTokens(${tokensJson});
+`;
+  }
+
+  // ============================================
   // File Generation
   // ============================================
 
@@ -1331,6 +1698,9 @@ ${describeComponentStates('badge') !== 'Not detected' ? '\n### Badges\n' + descr
 
     // Generate AI-ready design system prompt
     files['design-system-prompt.md'] = generateDesignSystemPrompt(normalizedData);
+
+    // Generate StyleKit tokens (createStyleTokens format)
+    files['style-tokens.ts'] = generateTokensTypeScript(normalizedData);
 
     return files;
   }
@@ -1505,6 +1875,14 @@ module.exports = ${JSON.stringify(config, null, 2)};
         this.normalize();
       }
       return generateDesignSystemPrompt(normalizedData);
+    },
+
+    // Generate style-tokens.ts (createStyleTokens format)
+    generateTokens() {
+      if (!normalizedData) {
+        this.normalize();
+      }
+      return generateTokensTypeScript(normalizedData);
     },
 
     // Full pipeline

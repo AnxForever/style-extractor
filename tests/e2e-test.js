@@ -433,6 +433,7 @@
       hasRecipeAPI: typeof window.__seStyleKit.generateRecipes === 'function',
       hasPromptAPI: typeof window.__seStyleKit.generatePrompt === 'function',
       hasConfidenceAPI: typeof window.__seStyleKit.getConfidenceReport === 'function',
+      hasTokensAPI: typeof window.__seStyleKit.generateTokens === 'function',
     };
   });
 
@@ -447,6 +448,7 @@
       hasRecipes: 'style-recipes.ts' in result.files,
       hasPrompt: 'design-system-prompt.md' in result.files,
       hasTokens: 'style-tokens.json' in result.files,
+      hasStyleTokens: 'style-tokens.ts' in result.files,
     };
   });
 
@@ -506,6 +508,27 @@
       overall: report.overall,
       componentCount: Object.keys(report.components).length,
       colorCount: Object.keys(report.colors).length,
+    };
+  });
+
+  // ============================================
+  // Test 5.5: StyleKit Tokens Generation
+  // ============================================
+
+  test('StyleKit - generateTokens()', () => {
+    const ts = window.__seStyleKit.generateTokens();
+    if (typeof ts !== 'string') {
+      return { success: false, error: 'generateTokens() did not return string' };
+    }
+    return {
+      success: true,
+      length: ts.length,
+      hasImport: ts.includes('createStyleTokens'),
+      hasFactory: ts.includes('createStyleTokens('),
+      hasBorder: ts.includes('"border"'),
+      hasShadow: ts.includes('"shadow"'),
+      hasColors: ts.includes('"colors"'),
+      hasRequired: ts.includes('"required"'),
     };
   });
 

@@ -778,6 +778,15 @@
       }
     }
 
+    // Add StyleKit tokens (createStyleTokens format) for full/replica presets
+    if ((includeRecipes || fullMode || replicaMode) && window.__seStyleKit?.installed) {
+      try {
+        result.data.styleTokensFile = window.__seStyleKit.generateTokens();
+      } catch (e) {
+        result.warnings.push({ module: 'stylekit-tokens', message: e.message });
+      }
+    }
+
     // Add AI-ready design system prompt if requested (auto-include for full/replica presets)
     if ((includePrompt || fullMode || replicaMode) && window.__seStyleKit?.installed) {
       try {
