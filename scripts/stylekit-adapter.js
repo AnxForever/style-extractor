@@ -1180,6 +1180,45 @@
     const components = normalizedData.components || {};
     const recipes = {};
 
+    // Detect available breakpoints for responsive hints
+    let breakpoints = null;
+    try {
+      if (window.__seStructure?.extractBreakpoints) {
+        const bp = window.__seStructure.extractBreakpoints();
+        if (bp?.named && Object.keys(bp.named).length) {
+          breakpoints = bp.named;
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Build responsive size parameter options from breakpoints
+    function buildResponsiveSizeOptions(type) {
+      if (!breakpoints) return null;
+      // Standard Tailwind breakpoint prefixes
+      const bpKeys = Object.keys(breakpoints).sort((a, b) => {
+        const order = { sm: 1, md: 2, lg: 3, xl: 4, '2xl': 5 };
+        return (order[a] || 99) - (order[b] || 99);
+      });
+      const mdBp = bpKeys.find(k => k === 'md' || k === 'lg') || bpKeys[0];
+      if (!mdBp) return null;
+
+      if (type === 'button' || type === 'input' || type === 'badge') {
+        return [
+          { value: 'sm', label: 'Small', labelZh: '小', classes: `px-3 py-1.5 text-sm ${mdBp}:px-4 ${mdBp}:py-2` },
+          { value: 'md', label: 'Medium', labelZh: '中', classes: `px-4 py-2 text-base ${mdBp}:px-5 ${mdBp}:py-2.5` },
+          { value: 'lg', label: 'Large', labelZh: '大', classes: `px-5 py-2.5 text-lg ${mdBp}:px-7 ${mdBp}:py-3` },
+        ];
+      }
+      if (type === 'card' || type === 'modal') {
+        return [
+          { value: 'sm', label: 'Small', labelZh: '小', classes: `p-3 ${mdBp}:p-4` },
+          { value: 'md', label: 'Medium', labelZh: '中', classes: `p-4 ${mdBp}:p-6` },
+          { value: 'lg', label: 'Large', labelZh: '大', classes: `p-6 ${mdBp}:p-8` },
+        ];
+      }
+      return null;
+    }
+
     for (const [type, items] of Object.entries(components)) {
       if (!items?.length) continue;
       const meta = COMPONENT_TYPE_META[type];
@@ -1234,12 +1273,13 @@
         if (disabledDiff.length) states.disabled = disabledDiff;
       }
 
-      // Build size parameters
+      // Build size parameters (responsive-aware when breakpoints available)
       const parameters = [];
       if (type === 'button' || type === 'input' || type === 'badge') {
+        const responsiveOpts = buildResponsiveSizeOptions(type);
         parameters.push({
           id: 'size', label: 'Size', labelZh: '尺寸', type: 'select',
-          options: [
+          options: responsiveOpts || [
             { value: 'sm', label: 'Small', labelZh: '小', classes: 'px-3 py-1.5 text-sm' },
             { value: 'md', label: 'Medium', labelZh: '中', classes: 'px-5 py-2 text-base' },
             { value: 'lg', label: 'Large', labelZh: '大', classes: 'px-7 py-3 text-lg' },
@@ -1248,9 +1288,10 @@
         });
       }
       if (type === 'card' || type === 'modal') {
+        const responsiveOpts = buildResponsiveSizeOptions(type);
         parameters.push({
           id: 'padding', label: 'Padding', labelZh: '内边距', type: 'select',
-          options: [
+          options: responsiveOpts || [
             { value: 'sm', label: 'Small', labelZh: '小', classes: 'p-3 md:p-4' },
             { value: 'md', label: 'Medium', labelZh: '中', classes: 'p-4 md:p-6' },
             { value: 'lg', label: 'Large', labelZh: '大', classes: 'p-6 md:p-8' },
@@ -1300,6 +1341,16 @@
 
       const confidence = componentConfidence(items);
 
+      // Build responsive hints from detected breakpoints
+      let responsive = null;
+      if (breakpoints) {
+        const bpNames = Object.keys(breakpoints);
+        responsive = {
+          breakpoints: bpNames,
+          hasResponsiveParams: !!buildResponsiveSizeOptions(type),
+        };
+      }
+
       recipes[type] = {
         id: type,
         name: meta.name,
@@ -1313,6 +1364,7 @@
         variants,
         slots,
         states: Object.keys(states).length ? states : undefined,
+        responsive,
         _confidence: confidence,
       };
     }

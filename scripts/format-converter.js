@@ -187,6 +187,38 @@
       }
     }
 
+    // Recipes (from stylekit adapter)
+    if (window.__seStyleKit?.getRecipes) {
+      try {
+        const recipes = window.__seStyleKit.getRecipes();
+        if (recipes && Object.keys(recipes).length) {
+          result.recipes = {};
+          for (const [type, r] of Object.entries(recipes)) {
+            result.recipes[type] = {
+              id: r.id,
+              name: r.name,
+              element: r.skeleton?.element || null,
+              baseClasses: r.skeleton?.baseClasses || [],
+              variants: Object.entries(r.variants || {}).map(([vid, v]) => ({
+                id: vid, label: v.label, classes: v.classes
+              })),
+              parameters: (r.parameters || []).map(p => ({
+                id: p.id, type: p.type, default: p.default
+              })),
+              slots: (r.slots || []).map(s => ({
+                id: s.id, type: s.type, required: s.required
+              })),
+              states: r.states || {},
+              confidence: r._confidence || null,
+              responsive: r.responsive || null,
+            };
+          }
+        }
+      } catch (e) {
+        // Recipes not available — skip
+      }
+    }
+
     return result;
   }
 
@@ -774,6 +806,24 @@ export default ${safeId}Style;
   }
 
   // ============================================
+  // Recipes TypeScript Format (delegates to stylekit adapter)
+  // ============================================
+
+  function toRecipesTS() {
+    if (!window.__seStyleKit?.generateRecipes) {
+      return '// Recipes not available — stylekit-adapter.js not loaded\n';
+    }
+    return window.__seStyleKit.generateRecipes();
+  }
+
+  function toTokensTS() {
+    if (!window.__seStyleKit?.generateTokens) {
+      return '// Tokens not available — stylekit-adapter.js not loaded\n';
+    }
+    return window.__seStyleKit.generateTokens();
+  }
+
+  // ============================================
   // Export
   // ============================================
 
@@ -786,6 +836,8 @@ export default ${safeId}Style;
     toCSSVars,
     toStyleKit,
     toStyleKitTS,
+    toRecipesTS,
+    toTokensTS,
 
     // Helpers
     slugify,
@@ -802,7 +854,9 @@ export default ${safeId}Style;
         tailwind: toTailwind(styleData),
         cssVars: toCSSVars(styleData),
         styleKit: toStyleKit(styleData),
-        styleKitTS: toStyleKitTS(styleData)
+        styleKitTS: toStyleKitTS(styleData),
+        recipesTS: toRecipesTS(),
+        tokensTS: toTokensTS()
       };
     }
   };
