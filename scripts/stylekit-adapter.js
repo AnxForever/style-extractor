@@ -426,9 +426,13 @@
       result.raw[name] = value;
     }
 
-    // Add extracted colors to palette
+    // Add extracted colors to palette with confidence
     for (const [key, info] of Object.entries(colors || {})) {
-      result.palette[key] = info.value;
+      result.palette[key] = {
+        value: info.value,
+        usage: info.usage ? Array.from(info.usage) : [],
+        confidence: countToConfidence(info.count || 1),
+      };
 
       // Try to infer semantic usage
       if (info.usage?.includes('text') && !result.semantic.text) {
@@ -575,6 +579,33 @@
     return result;
   }
 
+  // ============================================
+  // Confidence Scoring
+  // ============================================
+
+  function countToConfidence(count) {
+    if (count >= 5) return 'high';
+    if (count >= 2) return 'medium';
+    return 'low';
+  }
+
+  function stateConfidence(stateData) {
+    if (!stateData) return 'low';
+    const stateCount = ['hover', 'active', 'focus', 'disabled']
+      .filter(s => stateData[s] && Object.keys(stateData[s]).length > 0).length;
+    if (stateCount >= 3) return 'high';
+    if (stateCount >= 1) return 'medium';
+    return 'low';
+  }
+
+  function componentConfidence(items) {
+    const count = items?.length || 0;
+    const hasStates = items?.some(i => i.states && Object.keys(i.states).length > 0);
+    if (count >= 3 && hasStates) return 'high';
+    if (count >= 2 || hasStates) return 'medium';
+    return 'low';
+  }
+
   // Map plural interactiveDetails keys to singular component type keys
   const PLURAL_TO_SINGULAR = {
     buttons: 'button', inputs: 'input', navItems: 'navItem',
@@ -588,11 +619,15 @@
       if (!items?.length) continue;
       const singularType = PLURAL_TO_SINGULAR[type] || type;
 
-      result[singularType] = items.map(item => ({
+      const normalized = items.map(item => ({
         selector: item.selector,
         styles: item.styles,
-        states: item.states?.states || {}
+        states: item.states?.states || {},
+        confidence: stateConfidence(item.states?.states),
       }));
+      normalized._confidence = componentConfidence(normalized);
+
+      result[singularType] = normalized;
     }
 
     return result;
@@ -656,10 +691,68 @@
     '#38bdf8': 'sky-400', '#0ea5e9': 'sky-500', '#0284c7': 'sky-600',
   };
 
-  function hexDistance(hex1, hex2) {
-    const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
-    const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
-    return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+  // ── Color Science: RGB → LAB → Delta-E CIE2000 ──
+
+  function hexToRgb(hex) {
+    return {
+      r: parseInt(hex.slice(1, 3), 16),
+      g: parseInt(hex.slice(3, 5), 16),
+      b: parseInt(hex.slice(5, 7), 16),
+    };
+  }
+
+  function rgbToLab({ r, g, b }) {
+    // sRGB → linear RGB
+    let rl = r / 255, gl = g / 255, bl = b / 255;
+    rl = rl > 0.04045 ? ((rl + 0.055) / 1.055) ** 2.4 : rl / 12.92;
+    gl = gl > 0.04045 ? ((gl + 0.055) / 1.055) ** 2.4 : gl / 12.92;
+    bl = bl > 0.04045 ? ((bl + 0.055) / 1.055) ** 2.4 : bl / 12.92;
+    // linear RGB → XYZ (D65)
+    let x = (rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375) / 0.95047;
+    let y = (rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750);
+    let z = (rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041) / 1.08883;
+    // XYZ → LAB
+    const f = t => t > 0.008856 ? t ** (1 / 3) : 7.787 * t + 16 / 116;
+    x = f(x); y = f(y); z = f(z);
+    return { l: 116 * y - 16, a: 500 * (x - y), b: 200 * (y - z) };
+  }
+
+  function deltaE2000(lab1, lab2) {
+    const { l: L1, a: a1, b: b1 } = lab1;
+    const { l: L2, a: a2, b: b2 } = lab2;
+    const rad = Math.PI / 180;
+    const avg_Lp = (L1 + L2) / 2;
+    const C1 = Math.sqrt(a1 * a1 + b1 * b1);
+    const C2 = Math.sqrt(a2 * a2 + b2 * b2);
+    const avg_C = (C1 + C2) / 2;
+    const G = 0.5 * (1 - Math.sqrt(avg_C ** 7 / (avg_C ** 7 + 25 ** 7)));
+    const a1p = a1 * (1 + G), a2p = a2 * (1 + G);
+    const C1p = Math.sqrt(a1p * a1p + b1 * b1);
+    const C2p = Math.sqrt(a2p * a2p + b2 * b2);
+    const avg_Cp = (C1p + C2p) / 2;
+    let h1p = Math.atan2(b1, a1p) / rad; if (h1p < 0) h1p += 360;
+    let h2p = Math.atan2(b2, a2p) / rad; if (h2p < 0) h2p += 360;
+    let dHP = h2p - h1p;
+    if (Math.abs(dHP) > 180) dHP += dHP > 0 ? -360 : 360;
+    const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin(dHP * rad / 2);
+    let avg_Hp = (h1p + h2p) / 2;
+    if (Math.abs(h1p - h2p) > 180) avg_Hp += avg_Hp < 180 ? 180 : -180;
+    const T = 1 - 0.17 * Math.cos((avg_Hp - 30) * rad) + 0.24 * Math.cos(2 * avg_Hp * rad) +
+      0.32 * Math.cos((3 * avg_Hp + 6) * rad) - 0.20 * Math.cos((4 * avg_Hp - 63) * rad);
+    const SL = 1 + 0.015 * (avg_Lp - 50) ** 2 / Math.sqrt(20 + (avg_Lp - 50) ** 2);
+    const SC = 1 + 0.045 * avg_Cp;
+    const SH = 1 + 0.015 * avg_Cp * T;
+    const RT_exp = -2 * Math.sqrt(avg_Cp ** 7 / (avg_Cp ** 7 + 25 ** 7));
+    const d_theta = 30 * Math.exp(-(((avg_Hp - 275) / 25) ** 2));
+    const RT = RT_exp * Math.sin(2 * d_theta * rad);
+    const dLp = L2 - L1, dCp = C2p - C1p;
+    return Math.sqrt((dLp / SL) ** 2 + (dCp / SC) ** 2 + (dHp / SH) ** 2 + RT * (dCp / SC) * (dHp / SH));
+  }
+
+  // Pre-compute LAB values for TW_COLORS (once)
+  const TW_COLORS_LAB = {};
+  for (const hex of Object.keys(TW_COLORS)) {
+    TW_COLORS_LAB[hex] = rgbToLab(hexToRgb(hex));
   }
 
   function colorToTw(cssColor) {
@@ -668,13 +761,15 @@
     if (!hex || !hex.startsWith('#') || hex.length < 7) return null;
     const short = hex.slice(0, 7).toLowerCase();
     if (TW_COLORS[short]) return TW_COLORS[short];
-    // Find nearest match
-    let best = null, bestDist = Infinity;
-    for (const [h, name] of Object.entries(TW_COLORS)) {
-      const d = hexDistance(short, h);
-      if (d < bestDist) { bestDist = d; best = name; }
+    // Delta-E CIE2000 nearest match
+    const lab = rgbToLab(hexToRgb(short));
+    let best = null, bestDe = Infinity;
+    for (const [h, twLab] of Object.entries(TW_COLORS_LAB)) {
+      const de = deltaE2000(lab, twLab);
+      if (de < bestDe) { bestDe = de; best = TW_COLORS[h]; }
     }
-    return bestDist < 60 ? best : null; // Only if reasonably close
+    // Delta-E < 10 is "close enough" perceptually; < 25 is "same general color"
+    return bestDe < 15 ? best : null;
   }
 
   // px → Tailwind spacing mapping
@@ -1022,11 +1117,13 @@
           break;
       }
 
+      const confidence = componentConfidence(items);
+
       recipes[type] = {
         id: type,
         name: meta.name,
         nameZh: meta.nameZh,
-        description: `Extracted ${meta.desc} component`,
+        description: `Extracted ${meta.desc} component (confidence: ${confidence})`,
         skeleton: {
           element: meta.element,
           baseClasses: baseClasses.length ? baseClasses : ['inline-flex', 'items-center'],
@@ -1035,6 +1132,7 @@
         variants,
         slots,
         states: Object.keys(states).length ? states : undefined,
+        _confidence: confidence,
       };
     }
 
@@ -1064,6 +1162,152 @@ export const ${id}Recipes = createStyleRecipes("${slug}", "${name}", ${recipesJs
   }
 
   // ============================================
+  // AI-Ready Design System Prompt Generation
+  // ============================================
+
+  function generateDesignSystemPrompt(normalizedData) {
+    const name = normalizedData.name || 'Extracted Style';
+    const url = normalizedData.source?.url || 'unknown';
+    const tokens = normalizedData.tokens || {};
+    const components = normalizedData.components || {};
+
+    // Color table
+    const colorEntries = Object.entries(tokens.colors?.semantic || {})
+      .filter(([, v]) => v)
+      .map(([role, value]) => `| \`${role}\` | \`${value}\` |`)
+      .join('\n');
+    const colorTable = colorEntries
+      ? `| Role | Value |\n|------|-------|\n${colorEntries}`
+      : 'No color tokens extracted.';
+
+    // Typography
+    const typo = tokens.typography || {};
+    const fontFamilies = Object.entries(typo.fontFamily || {})
+      .filter(([, v]) => v)
+      .map(([role, family]) => `- **${role}**: \`${family}\``)
+      .join('\n') || 'Not observed';
+    const fontSizes = Object.entries(typo.fontSize || {})
+      .filter(([, v]) => v)
+      .map(([name, size]) => `\`${name}\`: ${size}`)
+      .join(', ') || 'Not observed';
+
+    // Spacing
+    const spacing = Object.entries(tokens.spacing || {})
+      .filter(([, v]) => v)
+      .slice(0, 10)
+      .map(([val, count]) => `\`${val}\` (${count}x)`)
+      .join(', ') || 'Not observed';
+
+    // Motion
+    const motion = tokens.motion || {};
+    const durations = Object.entries(motion.duration || {})
+      .map(([name, val]) => `${name}: ${val}`)
+      .join(', ') || 'Not observed';
+    const easings = Object.entries(motion.easing || {})
+      .map(([name, val]) => `${name}: ${val}`)
+      .join(', ') || 'Not observed';
+
+    // Component state descriptions
+    function describeComponentStates(compType) {
+      const items = components[compType];
+      if (!items?.length) return 'Not detected';
+      const first = items[0];
+      const baseClasses = stylesToTailwind(first.styles);
+      const lines = [`Base: \`${baseClasses.join(' ') || 'N/A'}\``];
+      const states = first.states || {};
+      if (states.hover) {
+        const diff = stateStyleDiff(states.default || first.styles, states.hover);
+        if (diff.length) lines.push(`Hover: \`${diff.map(c => 'hover:' + c).join(' ')}\``);
+      }
+      if (states.focus) {
+        const diff = stateStyleDiff(states.default || first.styles, states.focus);
+        if (diff.length) lines.push(`Focus: \`${diff.map(c => 'focus:' + c).join(' ')}\``);
+      }
+      if (states.active) {
+        const diff = stateStyleDiff(states.default || first.styles, states.active);
+        if (diff.length) lines.push(`Active: \`${diff.map(c => 'active:' + c).join(' ')}\``);
+      }
+      return lines.join('\n');
+    }
+
+    // Detected component types
+    const detectedTypes = Object.keys(components).filter(k => components[k]?.length);
+    const componentCount = detectedTypes.reduce((sum, k) => sum + components[k].length, 0);
+
+    return `<role>
+You are an expert frontend engineer specializing in UI implementation. Your goal is to help
+implement the "${name}" design system consistently across all components. Before writing code,
+understand the existing tech stack, design tokens, and component patterns.
+
+Always aim to:
+- Maintain visual consistency with the design system below
+- Ensure responsiveness across devices
+- Preserve or improve accessibility
+- Make deliberate choices that reflect the design system's unique personality
+</role>
+
+<design-system>
+# ${name}
+
+> Extracted from: ${url}
+> Components detected: ${componentCount} across ${detectedTypes.length} types (${detectedTypes.join(', ')})
+
+## Design Token System
+
+### Colors
+${colorTable}
+
+### Typography
+**Font Stacks**:
+${fontFamilies}
+
+**Type Scale**: ${fontSizes}
+
+### Spacing System
+Common values: ${spacing}
+
+### Motion
+**Durations**: ${durations}
+**Easings**: ${easings}
+
+---
+
+## Component Styling
+
+### Buttons
+${describeComponentStates('button')}
+
+### Cards
+${describeComponentStates('card')}
+
+### Inputs
+${describeComponentStates('input')}
+
+### Navigation
+${describeComponentStates('navigation')}
+${describeComponentStates('navItem') !== 'Not detected' ? '\n### Nav Items\n' + describeComponentStates('navItem') : ''}
+${describeComponentStates('badge') !== 'Not detected' ? '\n### Badges\n' + describeComponentStates('badge') : ''}
+
+---
+
+## Implementation Notes
+
+- Use Tailwind CSS utility classes for styling
+- Follow mobile-first responsive design
+- All component recipes are available in \`style-recipes.ts\`
+- Design tokens are defined in \`style-definition.ts\` and \`variables.css\`
+
+## Anti-Patterns
+
+- Do NOT use generic/default styling that contradicts the extracted tokens
+- Do NOT ignore the extracted state transitions (hover/focus/active)
+- Do NOT use arbitrary color values when a token exists for the same role
+
+</design-system>
+`;
+  }
+
+  // ============================================
   // File Generation
   // ============================================
 
@@ -1084,6 +1328,9 @@ export const ${id}Recipes = createStyleRecipes("${slug}", "${name}", ${recipesJs
 
     // Generate recipe definition
     files['style-recipes.ts'] = generateRecipesTypeScript(normalizedData);
+
+    // Generate AI-ready design system prompt
+    files['design-system-prompt.md'] = generateDesignSystemPrompt(normalizedData);
 
     return files;
   }
@@ -1252,6 +1499,14 @@ module.exports = ${JSON.stringify(config, null, 2)};
       return generateRecipesFromComponents(normalizedData);
     },
 
+    // Generate AI-ready design system prompt
+    generatePrompt() {
+      if (!normalizedData) {
+        this.normalize();
+      }
+      return generateDesignSystemPrompt(normalizedData);
+    },
+
     // Full pipeline
     extract() {
       this.collect();
@@ -1266,6 +1521,40 @@ module.exports = ${JSON.stringify(config, null, 2)};
     // Get current state
     getData() {
       return { collected: collectedData, normalized: normalizedData };
+    },
+
+    // Get confidence report across all extraction results
+    getConfidenceReport() {
+      if (!normalizedData) this.normalize();
+      const report = { overall: 'low', components: {}, colors: {} };
+
+      // Component confidence
+      for (const [type, items] of Object.entries(normalizedData.components || {})) {
+        report.components[type] = {
+          count: items.length,
+          confidence: items._confidence || componentConfidence(items),
+          hasStates: items.some(i => i.states && Object.keys(i.states).length > 0),
+        };
+      }
+
+      // Color confidence
+      for (const [key, info] of Object.entries(normalizedData.tokens?.colors?.palette || {})) {
+        if (typeof info === 'object' && info.confidence) {
+          report.colors[key] = info.confidence;
+        }
+      }
+
+      // Overall confidence: majority vote
+      const allScores = [
+        ...Object.values(report.components).map(c => c.confidence),
+        ...Object.values(report.colors),
+      ];
+      const high = allScores.filter(s => s === 'high').length;
+      const med = allScores.filter(s => s === 'medium').length;
+      if (high > allScores.length / 2) report.overall = 'high';
+      else if (high + med > allScores.length / 2) report.overall = 'medium';
+
+      return report;
     },
 
     // Schema reference

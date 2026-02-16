@@ -98,6 +98,7 @@
 | **CSS Variables** | `variables.css` | 原生 CSS 使用 |
 | **StyleKit** | `stylekit.ts` | StyleKit 导入 |
 | **Recipes** | `style-recipes.ts` | StyleKit 组件 Recipe 定义 (NEW) |
+| **AI Prompt** | `design-system-prompt.md` | AI-ready 设计系统 System Prompt (NEW) |
 | **HTML** | `skeleton.html` | 页面骨架 (NEW) |
 | **React** | `react/*.tsx` | React 组件 (NEW) |
 | **Vue** | `vue/*.vue` | Vue 组件 (NEW) |
@@ -113,7 +114,7 @@
 | `library-detect.js` | 检测第三方动画库 |
 | `component-detect.js` | 组件模式检测和状态提取 |
 | `format-converter.js` | 多格式输出转换 |
-| `stylekit-adapter.js` | StyleKit 集成适配器（含 Recipe 生成） |
+| `stylekit-adapter.js` | StyleKit 集成适配器（Recipe + AI Prompt + CIE2000 颜色匹配） |
 | `structure-extract.js` | 网站结构提取 |
 | `code-generator.js` | 框架代码生成 |
 | `export-schema.js` | 标准导出格式 |
@@ -134,6 +135,7 @@
 ├── tailwind.config.js          # Tailwind 配置
 ├── stylekit.ts                 # StyleKit 导入
 ├── style-recipes.ts            # StyleKit 组件 Recipe (NEW)
+├── design-system-prompt.md     # AI System Prompt (NEW)
 ├── variables.css               # CSS 变量
 │
 ├── structure/                  # 结构数据 (NEW)
@@ -181,6 +183,29 @@ const recipesTs = window.__seStyleKit.generateRecipes();
 // 获取结构化 recipe 数据（用于检查）
 const recipes = window.__seStyleKit.getRecipes();
 ```
+
+### AI 设计系统 Prompt
+
+```javascript
+// 生成 AI-ready System Prompt（可直接喂给 Claude/GPT）
+const prompt = window.__seStyleKit.generatePrompt();
+
+// 或从 extract() 结果中获取
+const result = window.__seStyleKit.extract();
+console.log(result.files['design-system-prompt.md']);
+```
+
+### Confidence 报告
+
+```javascript
+// 查看所有提取结果的信心评分
+const report = window.__seStyleKit.getConfidenceReport();
+// => { overall: 'medium', components: { button: { count: 3, confidence: 'high' } }, colors: { ... } }
+```
+
+### 颜色匹配
+
+颜色匹配使用 CIE2000 Delta-E 感知距离算法（而非简单 RGB 欧氏距离），确保绿色/蓝色区域的匹配精度。
 
 ## 参考与质量基准
 
