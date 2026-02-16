@@ -355,11 +355,11 @@
     {
       name: 'stylekit',
       globalName: '__seStyleKit',
-      version: '2.0.0',
-      description: 'StyleKit integration adapter',
+      version: '3.2.0',
+      description: 'StyleKit integration adapter with recipe generation, AI prompt, and confidence scoring',
       dependencies: [],
       optionalDeps: ['utils'],
-      capabilities: ['tokens', 'stylekit'],
+      capabilities: ['tokens', 'stylekit', 'recipes', 'prompts', 'confidence'],
       extract: () => window.__seStyleKit?.extract()
     },
     {
@@ -612,6 +612,9 @@
    * @param {boolean} options.includeCode - Generate framework code
    * @param {boolean} options.includeTheme - Extract both themes
    * @param {boolean} options.includeAISemantic - Generate AI-friendly semantic output
+   * @param {boolean} options.includeRecipes - Generate StyleKit component recipes
+   * @param {boolean} options.includePrompt - Generate AI-ready design system prompt
+   * @param {boolean} options.includeConfidence - Include confidence scoring report
    * @param {string} options.format - Output format: 'raw', 'json', 'tailwind', 'stylekit'
    * @param {string} options.depth - Blueprint detail level: 'overview', 'section', 'full' (default: 'full')
    */
@@ -720,6 +723,9 @@
       includeCode = false,
       includeTheme = false,
       includeAISemantic = false,
+      includeRecipes = false,
+      includePrompt = false,
+      includeConfidence = false,
       format = 'raw',
       depth = 'full'
     } = options;
@@ -758,6 +764,34 @@
         });
       } catch (e) {
         result.warnings.push({ module: 'ai-semantic', message: e.message });
+      }
+    }
+
+    // Add StyleKit recipes if requested
+    if (includeRecipes && window.__seStyleKit?.installed) {
+      try {
+        result.data.recipes = window.__seStyleKit.getRecipes();
+        result.data.recipesFile = window.__seStyleKit.generateRecipes();
+      } catch (e) {
+        result.warnings.push({ module: 'stylekit-recipes', message: e.message });
+      }
+    }
+
+    // Add AI-ready design system prompt if requested
+    if (includePrompt && window.__seStyleKit?.installed) {
+      try {
+        result.data.designSystemPrompt = window.__seStyleKit.generatePrompt();
+      } catch (e) {
+        result.warnings.push({ module: 'stylekit-prompt', message: e.message });
+      }
+    }
+
+    // Add confidence report if requested
+    if (includeConfidence && window.__seStyleKit?.installed) {
+      try {
+        result.data.confidenceReport = window.__seStyleKit.getConfidenceReport();
+      } catch (e) {
+        result.warnings.push({ module: 'stylekit-confidence', message: e.message });
       }
     }
 

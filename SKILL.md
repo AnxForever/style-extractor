@@ -165,12 +165,18 @@ const result = await evaluate_script({ function: `
     preset: 'full',           // 'minimal', 'style', 'components', 'motion', 'ai-semantic', 'replica', 'full'
     includeCode: true,        // Generate React/Vue components
     includeTheme: true,       // Extract both light/dark themes
-    includeAISemantic: true,  // Generate AI-friendly semantic output (NEW)
+    includeAISemantic: true,  // Generate AI-friendly semantic output
+    includeRecipes: true,     // Generate StyleKit component recipes (NEW)
+    includePrompt: true,      // Generate AI System Prompt (NEW)
+    includeConfidence: true,  // Include confidence scoring (NEW)
     format: 'tailwind'        // 'raw', 'json', 'tailwind', 'stylekit', 'css'
   })
 ` });
 // Returns: { meta, data, formatted, errors, warnings }
 // data.aiSemantic contains AI-friendly output when includeAISemantic: true
+// data.recipes / data.recipesFile when includeRecipes: true
+// data.designSystemPrompt when includePrompt: true
+// data.confidenceReport when includeConfidence: true
 ```
 
 ### AI-Optimized Extraction (NEW in v3.1)
@@ -1039,15 +1045,61 @@ window.__seFormat.toStyleKitTS(styleData) // TypeScript file
 window.__seFormat.convertAll(styleData)   // All formats
 ```
 
-### `scripts/stylekit-adapter.js` (NEW)
+### `scripts/stylekit-adapter.js` (v3.2)
 
-StyleKit integration adapter.
+StyleKit integration adapter with recipe generation, AI prompt output, and confidence scoring.
 
+**Core pipeline:**
 ```javascript
 window.__seStyleKit.collect()        // Collect page data
 window.__seStyleKit.normalize()      // Normalize to StyleKit format
-window.__seStyleKit.generateFiles()  // Generate import files
-window.__seStyleKit.extract()        // Full pipeline
+window.__seStyleKit.generateFiles()  // Generate all output files (6 files)
+window.__seStyleKit.extract()        // Full pipeline → { raw, normalized, files }
+```
+
+**Recipe generation (NEW):**
+```javascript
+// Generate createStyleRecipes() TypeScript file
+window.__seStyleKit.generateRecipes()  // → string (TS source code)
+
+// Get structured recipe data for inspection
+window.__seStyleKit.getRecipes()       // → { button: { id, skeleton, parameters, variants, slots, states }, ... }
+```
+
+**AI-ready prompt (NEW):**
+```javascript
+// Generate design system System Prompt for AI agents
+window.__seStyleKit.generatePrompt()   // → string (markdown with <role> + <design-system> blocks)
+```
+
+**Confidence report (NEW):**
+```javascript
+// Get confidence scores across all extraction results
+window.__seStyleKit.getConfidenceReport()
+// → { overall: 'high'|'medium'|'low', components: { button: { count, confidence, hasStates } }, colors: { ... } }
+```
+
+**Output files from `generateFiles()`:**
+
+| File | Format | Purpose |
+|------|--------|---------|
+| `style-definition.ts` | TypeScript | StyleKit `StyleDefinition` import |
+| `style-recipes.ts` | TypeScript | `createStyleRecipes()` component recipes |
+| `design-system-prompt.md` | Markdown | AI System Prompt with tokens + component states |
+| `variables.css` | CSS | CSS custom properties |
+| `tailwind.config.js` | JavaScript | Tailwind theme extension |
+| `style-tokens.json` | JSON | Raw normalized token data |
+
+**Color matching:** Uses CIE2000 Delta-E perceptual distance (not RGB euclidean) for Tailwind color approximation.
+
+**Via unified entry point:**
+```javascript
+window.extractStyle({
+  preset: 'full',
+  includeRecipes: true,       // → result.data.recipes + result.data.recipesFile
+  includePrompt: true,        // → result.data.designSystemPrompt
+  includeConfidence: true,    // → result.data.confidenceReport
+})
 ```
 
 ### `scripts/structure-extract.js` (NEW in v3.0)
