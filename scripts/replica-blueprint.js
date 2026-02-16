@@ -2678,11 +2678,13 @@
       maxStackingOverlays: Number.isFinite(options.maxStackingOverlays) ? options.maxStackingOverlays : 10,
       maxAssetItems: Number.isFinite(options.maxAssetItems) ? options.maxAssetItems : 80,
       maxSelectorChars: Number.isFinite(options.maxSelectorChars) ? options.maxSelectorChars : 180,
+      maxRecipes: Number.isFinite(options.maxRecipes) ? options.maxRecipes : 8,
       includeTokens: options.includeTokens !== false,
       includeAssets: options.includeAssets !== false,
       includeSections: options.includeSections !== false,
       includeComponents: options.includeComponents !== false,
       includeInteractions: options.includeInteractions !== false,
+      includeRecipes: options.includeRecipes !== false,
       pretty: options.pretty !== false
     };
 
@@ -2728,6 +2730,32 @@
         shadows: pickObject(tokens.shadows, 16),
         motion: tokens.motion || null
       };
+    };
+
+    const condenseRecipes = (cfg) => {
+      if (!cfg.includeRecipes) return null;
+      // Attempt to get recipes from stylekit adapter
+      let recipes = null;
+      try {
+        if (window.__seStyleKit?.getRecipes) {
+          recipes = window.__seStyleKit.getRecipes();
+        }
+      } catch (e) { /* ignore */ }
+      if (!recipes || typeof recipes !== 'object') return null;
+
+      const entries = Object.entries(recipes).slice(0, cfg.maxRecipes);
+      if (!entries.length) return null;
+
+      return entries.map(([type, r]) => ({
+        type,
+        element: r.skeleton?.element || null,
+        baseClasses: r.skeleton?.baseClasses?.join(' ') || null,
+        variants: Object.keys(r.variants || {}),
+        parameters: (r.parameters || []).map(p => p.id),
+        slots: (r.slots || []).map(s => s.id),
+        states: r.states ? Object.keys(r.states) : [],
+        confidence: r._confidence || null,
+      }));
     };
 
     const condensePatterns = (cfg) => {
@@ -2876,6 +2904,7 @@
         meta: blueprint.meta || null,
         summary: blueprint.summary || null,
         tokens: condenseTokens(cfg),
+        recipes: condenseRecipes(cfg),
         patterns: condensePatterns(cfg),
         // Put responsive early so it remains visible under maxChars.
         responsive: condenseResponsive(cfg),
@@ -2966,6 +2995,10 @@
       }
       if (cfg.includeInteractions) {
         cfg.includeInteractions = false;
+        continue;
+      }
+      if (cfg.includeRecipes) {
+        cfg.includeRecipes = false;
         continue;
       }
       if (cfg.includeComponents) {

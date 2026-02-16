@@ -484,6 +484,31 @@
       };
     }
 
+    // Include recipes from stylekit adapter if available
+    if (data.stylekit?.files?.['style-recipes.ts'] || data.recipes) {
+      schema.recipes = {};
+      try {
+        if (window.__seStyleKit?.getRecipes) {
+          const recipes = window.__seStyleKit.getRecipes();
+          for (const [type, recipe] of Object.entries(recipes)) {
+            schema.recipes[type] = {
+              id: recipe.id,
+              name: recipe.name,
+              element: recipe.skeleton?.element || null,
+              baseClasses: recipe.skeleton?.baseClasses || [],
+              variants: Object.keys(recipe.variants || {}),
+              parameters: (recipe.parameters || []).map(p => ({ id: p.id, type: p.type, default: p.default })),
+              slots: (recipe.slots || []).map(s => ({ id: s.id, required: s.required })),
+              states: recipe.states ? Object.keys(recipe.states) : [],
+              confidence: recipe._confidence || null,
+            };
+          }
+        }
+      } catch (e) {
+        debug('Failed to include recipes in schema:', e.message);
+      }
+    }
+
     return schema;
   }
 

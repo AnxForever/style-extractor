@@ -1096,6 +1096,54 @@
     if (styles.textDecoration?.includes('underline')) classes.push('underline');
     else if (styles.textDecoration?.includes('line-through')) classes.push('line-through');
 
+    // Text shadow (map to drop-shadow utility)
+    if (styles.textShadow && styles.textShadow !== 'none') {
+      // Parse "Xpx Ypx Bpx color" pattern
+      const tsm = styles.textShadow.match(/([\d.]+)px\s+([\d.]+)px\s+([\d.]+)px/);
+      if (tsm) {
+        const blur = parseFloat(tsm[3]);
+        if (blur <= 1) classes.push('drop-shadow-sm');
+        else if (blur <= 3) classes.push('drop-shadow');
+        else if (blur <= 6) classes.push('drop-shadow-md');
+        else if (blur <= 10) classes.push('drop-shadow-lg');
+        else classes.push('drop-shadow-xl');
+      }
+    }
+
+    // Background gradient (linear-gradient → bg-gradient-to-* + from/to colors)
+    if (styles.backgroundImage && styles.backgroundImage.includes('linear-gradient')) {
+      const gm = styles.backgroundImage.match(/linear-gradient\(\s*(?:to\s+)?([\w\s]+?)?\s*,\s*([^,)]+)\s*(?:,\s*([^,)]+))?\s*(?:,\s*([^,)]+))?\s*\)/);
+      if (gm) {
+        // Direction
+        const dir = (gm[1] || '').trim().toLowerCase();
+        const dirMap = {
+          'bottom': 'bg-gradient-to-b', 'top': 'bg-gradient-to-t',
+          'right': 'bg-gradient-to-r', 'left': 'bg-gradient-to-l',
+          'bottom right': 'bg-gradient-to-br', 'bottom left': 'bg-gradient-to-bl',
+          'top right': 'bg-gradient-to-tr', 'top left': 'bg-gradient-to-tl',
+          '180deg': 'bg-gradient-to-b', '0deg': 'bg-gradient-to-t',
+          '90deg': 'bg-gradient-to-r', '270deg': 'bg-gradient-to-l',
+        };
+        classes.push(dirMap[dir] || 'bg-gradient-to-r');
+
+        // Color stops
+        const fromColor = colorToTw(gm[2]?.trim());
+        if (fromColor) classes.push(`from-${fromColor}`);
+        if (gm[3]) {
+          const viaColor = colorToTw(gm[3].trim());
+          if (viaColor) {
+            if (gm[4]) {
+              classes.push(`via-${viaColor}`);
+              const toColor = colorToTw(gm[4].trim());
+              if (toColor) classes.push(`to-${toColor}`);
+            } else {
+              classes.push(`to-${viaColor}`);
+            }
+          }
+        }
+      }
+    }
+
     return classes;
   }
 
