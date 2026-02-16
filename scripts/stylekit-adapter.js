@@ -333,9 +333,21 @@
       stylekit.tokens.motion = normalizeMotion(extractedData.motion);
     }
 
-    // Normalize components
+    // Normalize components - merge interactiveDetails (with states) and basic components
     if (extractedData.componentDetails) {
       stylekit.components = normalizeComponents(extractedData.componentDetails);
+    }
+    // Fill in component types that were detected but not in interactiveDetails
+    if (extractedData.components) {
+      for (const [type, items] of Object.entries(extractedData.components)) {
+        if (!stylekit.components[type] && items?.length) {
+          stylekit.components[type] = items.map(item => ({
+            selector: item.selector,
+            styles: item.styles,
+            states: {}
+          }));
+        }
+      }
     }
 
     return stylekit;
@@ -563,13 +575,20 @@
     return result;
   }
 
+  // Map plural interactiveDetails keys to singular component type keys
+  const PLURAL_TO_SINGULAR = {
+    buttons: 'button', inputs: 'input', navItems: 'navItem',
+    cards: 'card', badges: 'badge', modals: 'modal', navigations: 'navigation',
+  };
+
   function normalizeComponents(componentDetails) {
     const result = {};
 
     for (const [type, items] of Object.entries(componentDetails)) {
       if (!items?.length) continue;
+      const singularType = PLURAL_TO_SINGULAR[type] || type;
 
-      result[type] = items.map(item => ({
+      result[singularType] = items.map(item => ({
         selector: item.selector,
         styles: item.styles,
         states: item.states?.states || {}
@@ -577,6 +596,471 @@
     }
 
     return result;
+  }
+
+  // ============================================
+  // CSS → Tailwind Mapping
+  // ============================================
+
+  // Color hex → nearest Tailwind color class
+  const TW_COLORS = {
+    '#000000': 'black', '#ffffff': 'white', '#f8fafc': 'slate-50', '#f1f5f9': 'slate-100',
+    '#e2e8f0': 'slate-200', '#cbd5e1': 'slate-300', '#94a3b8': 'slate-400', '#64748b': 'slate-500',
+    '#475569': 'slate-600', '#334155': 'slate-700', '#1e293b': 'slate-800', '#0f172a': 'slate-900',
+    '#f9fafb': 'gray-50', '#f3f4f6': 'gray-100', '#e5e7eb': 'gray-200', '#d1d5db': 'gray-300',
+    '#9ca3af': 'gray-400', '#6b7280': 'gray-500', '#4b5563': 'gray-600', '#374151': 'gray-700',
+    '#1f2937': 'gray-800', '#111827': 'gray-900', '#fef2f2': 'red-50', '#fee2e2': 'red-100',
+    '#fecaca': 'red-200', '#fca5a5': 'red-300', '#f87171': 'red-400', '#ef4444': 'red-500',
+    '#dc2626': 'red-600', '#b91c1c': 'red-700', '#991b1b': 'red-800',
+    '#fefce8': 'yellow-50', '#fef9c3': 'yellow-100', '#fef08a': 'yellow-200',
+    '#fde047': 'yellow-300', '#facc15': 'yellow-400', '#eab308': 'yellow-500',
+    '#ecfdf5': 'green-50', '#d1fae5': 'green-100', '#a7f3d0': 'green-200',
+    '#6ee7b7': 'green-300', '#34d399': 'green-400', '#10b981': 'green-500',
+    '#059669': 'green-600', '#047857': 'green-700', '#065f46': 'green-800',
+    '#eff6ff': 'blue-50', '#dbeafe': 'blue-100', '#bfdbfe': 'blue-200',
+    '#93c5fd': 'blue-300', '#60a5fa': 'blue-400', '#3b82f6': 'blue-500',
+    '#2563eb': 'blue-600', '#1d4ed8': 'blue-700', '#1e40af': 'blue-800',
+    '#eef2ff': 'indigo-50', '#e0e7ff': 'indigo-100', '#c7d2fe': 'indigo-200',
+    '#a5b4fc': 'indigo-300', '#818cf8': 'indigo-400', '#6366f1': 'indigo-500',
+    '#4f46e5': 'indigo-600', '#4338ca': 'indigo-700',
+    '#fdf4ff': 'purple-50', '#fae8ff': 'purple-100', '#e9d5ff': 'purple-200',
+    '#d8b4fe': 'purple-300', '#c084fc': 'purple-400', '#a855f7': 'purple-500',
+    '#9333ea': 'purple-600', '#7e22ce': 'purple-700',
+    '#fdf2f8': 'pink-50', '#fce7f3': 'pink-100', '#fbcfe8': 'pink-200',
+    '#f9a8d4': 'pink-300', '#f472b6': 'pink-400', '#ec4899': 'pink-500',
+    '#db2777': 'pink-600', '#be185d': 'pink-700',
+    '#fff7ed': 'orange-50', '#ffedd5': 'orange-100', '#fed7aa': 'orange-200',
+    '#fdba74': 'orange-300', '#fb923c': 'orange-400', '#f97316': 'orange-500',
+    '#ea580c': 'orange-600', '#c2410c': 'orange-700',
+    '#f0fdfa': 'teal-50', '#ccfbf1': 'teal-100', '#99f6e4': 'teal-200',
+    '#5eead4': 'teal-300', '#2dd4bf': 'teal-400', '#14b8a6': 'teal-500',
+    '#0d9488': 'teal-600', '#0f766e': 'teal-700',
+    '#ecfeff': 'cyan-50', '#cffafe': 'cyan-100', '#a5f3fc': 'cyan-200',
+    '#67e8f9': 'cyan-300', '#22d3ee': 'cyan-400', '#06b6d4': 'cyan-500',
+    '#0891b2': 'cyan-600', '#0e7490': 'cyan-700',
+    '#f0fdf4': 'emerald-50', '#d1fae5': 'emerald-100', '#a7f3d0': 'emerald-200',
+    '#6ee7b7': 'emerald-300', '#34d399': 'emerald-400', '#10b981': 'emerald-500',
+    '#f5f3ff': 'violet-50', '#ede9fe': 'violet-100', '#ddd6fe': 'violet-200',
+    '#c4b5fd': 'violet-300', '#a78bfa': 'violet-400', '#8b5cf6': 'violet-500',
+    '#7c3aed': 'violet-600', '#6d28d9': 'violet-700',
+    '#fefce8': 'amber-50', '#fef3c7': 'amber-100', '#fde68a': 'amber-200',
+    '#fcd34d': 'amber-300', '#fbbf24': 'amber-400', '#f59e0b': 'amber-500',
+    '#d97706': 'amber-600', '#b45309': 'amber-700',
+    '#fff1f2': 'rose-50', '#ffe4e6': 'rose-100', '#fecdd3': 'rose-200',
+    '#fda4af': 'rose-300', '#fb7185': 'rose-400', '#f43f5e': 'rose-500',
+    '#e11d48': 'rose-600', '#be123c': 'rose-700',
+    '#ecfdf5': 'emerald-50', '#d1fae5': 'emerald-100',
+    '#f7fee7': 'lime-50', '#ecfccb': 'lime-100', '#d9f99d': 'lime-200',
+    '#bef264': 'lime-300', '#a3e635': 'lime-400', '#84cc16': 'lime-500',
+    '#e0f2fe': 'sky-100', '#bae6fd': 'sky-200', '#7dd3fc': 'sky-300',
+    '#38bdf8': 'sky-400', '#0ea5e9': 'sky-500', '#0284c7': 'sky-600',
+  };
+
+  function hexDistance(hex1, hex2) {
+    const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
+    const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
+    return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+  }
+
+  function colorToTw(cssColor) {
+    if (!cssColor || cssColor === 'transparent' || cssColor === 'rgba(0, 0, 0, 0)') return null;
+    const hex = normalizeColor(cssColor);
+    if (!hex || !hex.startsWith('#') || hex.length < 7) return null;
+    const short = hex.slice(0, 7).toLowerCase();
+    if (TW_COLORS[short]) return TW_COLORS[short];
+    // Find nearest match
+    let best = null, bestDist = Infinity;
+    for (const [h, name] of Object.entries(TW_COLORS)) {
+      const d = hexDistance(short, h);
+      if (d < bestDist) { bestDist = d; best = name; }
+    }
+    return bestDist < 60 ? best : null; // Only if reasonably close
+  }
+
+  // px → Tailwind spacing mapping
+  const TW_SPACING = {
+    '0': '0', '1': 'px', '2': '0.5', '4': '1', '6': '1.5', '8': '2', '10': '2.5',
+    '12': '3', '14': '3.5', '16': '4', '20': '5', '24': '6', '28': '7', '32': '8',
+    '36': '9', '40': '10', '44': '11', '48': '12', '56': '14', '64': '16',
+    '80': '20', '96': '24', '112': '28', '128': '32', '160': '40', '192': '48',
+    '224': '56', '256': '64',
+  };
+
+  function pxToTwSpacing(pxVal) {
+    if (!pxVal) return null;
+    const n = parseFloat(pxVal);
+    if (isNaN(n)) return null;
+    const rounded = Math.round(n);
+    if (TW_SPACING[String(rounded)]) return TW_SPACING[String(rounded)];
+    // Find nearest
+    let best = null, bestDist = Infinity;
+    for (const [px, tw] of Object.entries(TW_SPACING)) {
+      const d = Math.abs(rounded - Number(px));
+      if (d < bestDist) { bestDist = d; best = tw; }
+    }
+    return bestDist <= 4 ? best : null;
+  }
+
+  // Border radius → Tailwind class
+  function borderRadiusToTw(val) {
+    if (!val || val === '0px') return 'rounded-none';
+    const n = parseFloat(val);
+    if (isNaN(n)) return null;
+    if (n >= 9999) return 'rounded-full';
+    if (n >= 24) return 'rounded-3xl';
+    if (n >= 16) return 'rounded-2xl';
+    if (n >= 12) return 'rounded-xl';
+    if (n >= 8) return 'rounded-lg';
+    if (n >= 6) return 'rounded-md';
+    if (n >= 4) return 'rounded';
+    if (n >= 2) return 'rounded-sm';
+    return 'rounded-none';
+  }
+
+  // Font size → Tailwind class
+  function fontSizeToTw(val) {
+    if (!val) return null;
+    const n = parseFloat(val);
+    if (isNaN(n)) return null;
+    if (n <= 12) return 'text-xs';
+    if (n <= 14) return 'text-sm';
+    if (n <= 16) return 'text-base';
+    if (n <= 18) return 'text-lg';
+    if (n <= 20) return 'text-xl';
+    if (n <= 24) return 'text-2xl';
+    if (n <= 30) return 'text-3xl';
+    if (n <= 36) return 'text-4xl';
+    if (n <= 48) return 'text-5xl';
+    if (n <= 60) return 'text-6xl';
+    if (n <= 72) return 'text-7xl';
+    if (n <= 96) return 'text-8xl';
+    return 'text-9xl';
+  }
+
+  // Font weight → Tailwind class
+  function fontWeightToTw(val) {
+    if (!val) return null;
+    const n = parseInt(val);
+    if (n <= 100) return 'font-thin';
+    if (n <= 200) return 'font-extralight';
+    if (n <= 300) return 'font-light';
+    if (n <= 400) return 'font-normal';
+    if (n <= 500) return 'font-medium';
+    if (n <= 600) return 'font-semibold';
+    if (n <= 700) return 'font-bold';
+    if (n <= 800) return 'font-extrabold';
+    return 'font-black';
+  }
+
+  // Border width → Tailwind class
+  function borderWidthToTw(val) {
+    if (!val) return null;
+    const n = parseFloat(val);
+    if (n === 0) return 'border-0';
+    if (n <= 1) return 'border';
+    if (n <= 2) return 'border-2';
+    if (n <= 4) return 'border-4';
+    return 'border-8';
+  }
+
+  // Box shadow → Tailwind class (best-effort)
+  function boxShadowToTw(val) {
+    if (!val || val === 'none') return null;
+    // Hard offset shadows (brutalist-style)
+    if (/\d+px\s+\d+px\s+0px/.test(val)) return `shadow-[${val.replace(/\s+/g, '_')}]`;
+    // Generic shadow classification by blur radius
+    const blur = val.match(/\d+px\s+\d+px\s+(\d+)px/);
+    if (blur) {
+      const b = parseInt(blur[1]);
+      if (b <= 2) return 'shadow-sm';
+      if (b <= 6) return 'shadow';
+      if (b <= 15) return 'shadow-md';
+      if (b <= 25) return 'shadow-lg';
+      if (b <= 50) return 'shadow-xl';
+      return 'shadow-2xl';
+    }
+    return 'shadow';
+  }
+
+  // Opacity → Tailwind class
+  function opacityToTw(val) {
+    if (!val) return null;
+    const n = parseFloat(val);
+    if (n >= 1) return null;
+    const rounded = Math.round(n * 100 / 5) * 5;
+    return `opacity-${rounded}`;
+  }
+
+  // Full computed styles → array of Tailwind classes
+  function stylesToTailwind(styles) {
+    if (!styles) return [];
+    const classes = [];
+
+    // Background color
+    const bgTw = colorToTw(styles.backgroundColor);
+    if (bgTw) classes.push(`bg-${bgTw}`);
+
+    // Text color
+    const textTw = colorToTw(styles.color);
+    if (textTw) classes.push(`text-${textTw}`);
+
+    // Border
+    const bw = borderWidthToTw(styles.borderWidth);
+    if (bw && bw !== 'border-0') {
+      classes.push(bw);
+      const bc = colorToTw(styles.borderColor);
+      if (bc) classes.push(`border-${bc}`);
+    }
+
+    // Border radius
+    const br = borderRadiusToTw(styles.borderRadius);
+    if (br) classes.push(br);
+
+    // Font size
+    const fs = fontSizeToTw(styles.fontSize);
+    if (fs) classes.push(fs);
+
+    // Font weight
+    const fw = fontWeightToTw(styles.fontWeight);
+    if (fw && fw !== 'font-normal') classes.push(fw);
+
+    // Box shadow
+    const shadow = boxShadowToTw(styles.boxShadow);
+    if (shadow) classes.push(shadow);
+
+    // Opacity
+    const opacity = opacityToTw(styles.opacity);
+    if (opacity) classes.push(opacity);
+
+    // Padding (simplified - use largest axis)
+    const pt = pxToTwSpacing(styles.paddingTop);
+    const pr = pxToTwSpacing(styles.paddingRight);
+    const pb = pxToTwSpacing(styles.paddingBottom);
+    const pl = pxToTwSpacing(styles.paddingLeft);
+    if (pt && pr && pb && pl) {
+      if (pt === pb && pl === pr && pt === pl) {
+        classes.push(`p-${pt}`);
+      } else if (pt === pb && pl === pr) {
+        classes.push(`py-${pt}`, `px-${pl}`);
+      } else {
+        if (pt) classes.push(`pt-${pt}`);
+        if (pr) classes.push(`pr-${pr}`);
+        if (pb) classes.push(`pb-${pb}`);
+        if (pl) classes.push(`pl-${pl}`);
+      }
+    }
+
+    // Transition
+    if (styles.transitionDuration && styles.transitionDuration !== '0s') {
+      classes.push('transition-all');
+      const ms = parseFloat(styles.transitionDuration) * 1000;
+      if (ms <= 75) classes.push('duration-75');
+      else if (ms <= 100) classes.push('duration-100');
+      else if (ms <= 150) classes.push('duration-150');
+      else if (ms <= 200) classes.push('duration-200');
+      else if (ms <= 300) classes.push('duration-300');
+      else if (ms <= 500) classes.push('duration-500');
+      else if (ms <= 700) classes.push('duration-700');
+      else classes.push('duration-1000');
+    }
+
+    // Cursor
+    if (styles.cursor === 'pointer') classes.push('cursor-pointer');
+    if (styles.cursor === 'not-allowed') classes.push('cursor-not-allowed');
+
+    return classes;
+  }
+
+  // Compare two style objects, return Tailwind classes for the diff
+  function stateStyleDiff(defaultStyles, stateStyles) {
+    if (!stateStyles || !defaultStyles) return [];
+    const diff = [];
+    for (const prop of Object.keys(stateStyles)) {
+      if (defaultStyles[prop] !== stateStyles[prop]) {
+        const single = {};
+        single[prop] = stateStyles[prop];
+        const tw = stylesToTailwind(single);
+        diff.push(...tw);
+      }
+    }
+    return diff;
+  }
+
+  // ============================================
+  // Recipe Generation
+  // ============================================
+
+  const COMPONENT_TYPE_META = {
+    button: { element: 'button', name: 'Button', nameZh: '按钮', desc: 'button', slotsType: 'button' },
+    card: { element: 'div', name: 'Card', nameZh: '卡片', desc: 'card', slotsType: 'card' },
+    input: { element: 'input', name: 'Input', nameZh: '输入框', desc: 'input', slotsType: 'input' },
+    navigation: { element: 'nav', name: 'Navigation', nameZh: '导航', desc: 'navigation bar', slotsType: 'children' },
+    navItem: { element: 'a', name: 'Nav Item', nameZh: '导航项', desc: 'navigation item', slotsType: 'label' },
+    badge: { element: 'div', name: 'Badge', nameZh: '徽章', desc: 'badge/tag', slotsType: 'label' },
+    modal: { element: 'div', name: 'Modal', nameZh: '弹窗', desc: 'modal dialog', slotsType: 'children' },
+  };
+
+  function generateRecipesFromComponents(normalizedData) {
+    const components = normalizedData.components || {};
+    const recipes = {};
+
+    for (const [type, items] of Object.entries(components)) {
+      if (!items?.length) continue;
+      const meta = COMPONENT_TYPE_META[type];
+      if (!meta) continue;
+
+      // Use first item for base styles, detect variants from multiple items
+      const primary = items[0];
+      const baseClasses = stylesToTailwind(primary.styles);
+
+      // Build variants from different instances
+      const variants = {};
+      if (items.length === 1) {
+        variants.primary = {
+          id: 'primary', label: 'Primary', labelZh: '主要', classes: [],
+        };
+      } else {
+        // First instance = primary, others = secondary/tertiary etc.
+        const variantNames = [
+          { id: 'primary', label: 'Primary', labelZh: '主要' },
+          { id: 'secondary', label: 'Secondary', labelZh: '次要' },
+          { id: 'outline', label: 'Outline', labelZh: '轮廓' },
+          { id: 'ghost', label: 'Ghost', labelZh: '幽灵' },
+          { id: 'accent', label: 'Accent', labelZh: '强调' },
+        ];
+        items.slice(0, 5).forEach((item, i) => {
+          const vn = variantNames[i] || { id: `variant-${i}`, label: `Variant ${i + 1}`, labelZh: `变体${i + 1}` };
+          // Diff this item's styles vs the base (first item)
+          const diffClasses = i === 0 ? [] : stateStyleDiff(primary.styles, item.styles);
+          variants[vn.id] = { id: vn.id, label: vn.label, labelZh: vn.labelZh, classes: diffClasses };
+        });
+      }
+
+      // Build states from interactiveDetails
+      const states = {};
+      const stateData = primary.states || {};
+      const defaultStyles = stateData.default || primary.styles || {};
+
+      if (stateData.hover) {
+        const hoverDiff = stateStyleDiff(defaultStyles, stateData.hover);
+        if (hoverDiff.length) states.hover = hoverDiff.map(c => `hover:${c}`);
+      }
+      if (stateData.focus) {
+        const focusDiff = stateStyleDiff(defaultStyles, stateData.focus);
+        if (focusDiff.length) states.focus = focusDiff.map(c => `focus:${c}`);
+      }
+      if (stateData.active) {
+        const activeDiff = stateStyleDiff(defaultStyles, stateData.active);
+        if (activeDiff.length) states.active = activeDiff.map(c => `active:${c}`);
+      }
+      if (stateData.disabled) {
+        const disabledDiff = stateStyleDiff(defaultStyles, stateData.disabled);
+        if (disabledDiff.length) states.disabled = disabledDiff;
+      }
+
+      // Build size parameters
+      const parameters = [];
+      if (type === 'button' || type === 'input' || type === 'badge') {
+        parameters.push({
+          id: 'size', label: 'Size', labelZh: '尺寸', type: 'select',
+          options: [
+            { value: 'sm', label: 'Small', labelZh: '小', classes: 'px-3 py-1.5 text-sm' },
+            { value: 'md', label: 'Medium', labelZh: '中', classes: 'px-5 py-2 text-base' },
+            { value: 'lg', label: 'Large', labelZh: '大', classes: 'px-7 py-3 text-lg' },
+          ],
+          default: 'md',
+        });
+      }
+      if (type === 'card' || type === 'modal') {
+        parameters.push({
+          id: 'padding', label: 'Padding', labelZh: '内边距', type: 'select',
+          options: [
+            { value: 'sm', label: 'Small', labelZh: '小', classes: 'p-3 md:p-4' },
+            { value: 'md', label: 'Medium', labelZh: '中', classes: 'p-4 md:p-6' },
+            { value: 'lg', label: 'Large', labelZh: '大', classes: 'p-6 md:p-8' },
+          ],
+          default: 'md',
+        });
+      }
+      if (type === 'button') {
+        parameters.push({
+          id: 'fullWidth', label: 'Full Width', labelZh: '全宽',
+          type: 'boolean', default: false, trueClasses: 'w-full',
+        });
+      }
+
+      // Build slots
+      let slots;
+      switch (meta.slotsType) {
+        case 'button':
+          slots = [
+            { id: 'icon', label: 'Icon', labelZh: '图标', required: false, type: 'icon' },
+            { id: 'label', label: 'Label', labelZh: '文字', required: true, default: 'Click', type: 'text' },
+          ];
+          break;
+        case 'card':
+          slots = [
+            { id: 'title', label: 'Title', labelZh: '标题', required: false, default: 'Card Title', type: 'text' },
+            { id: 'children', label: 'Content', labelZh: '内容', required: true, default: 'Card content goes here', type: 'children' },
+          ];
+          break;
+        case 'input':
+          slots = [
+            { id: 'placeholder', label: 'Placeholder', labelZh: '占位符', required: false, default: 'Type here...', type: 'text' },
+          ];
+          break;
+        case 'label':
+          slots = [
+            { id: 'label', label: 'Label', labelZh: '文字', required: true, default: meta.name, type: 'text' },
+          ];
+          break;
+        case 'children':
+        default:
+          slots = [
+            { id: 'children', label: 'Content', labelZh: '内容', required: true, type: 'children' },
+          ];
+          break;
+      }
+
+      recipes[type] = {
+        id: type,
+        name: meta.name,
+        nameZh: meta.nameZh,
+        description: `Extracted ${meta.desc} component`,
+        skeleton: {
+          element: meta.element,
+          baseClasses: baseClasses.length ? baseClasses : ['inline-flex', 'items-center'],
+        },
+        parameters,
+        variants,
+        slots,
+        states: Object.keys(states).length ? states : undefined,
+      };
+    }
+
+    return recipes;
+  }
+
+  function generateRecipesTypeScript(normalizedData) {
+    const id = toSafeIdentifier(normalizedData.id);
+    const slug = normalizedData.id;
+    const name = normalizedData.name;
+    const recipes = generateRecipesFromComponents(normalizedData);
+
+    if (!Object.keys(recipes).length) {
+      return `// No components detected — no recipes generated.\n// Run component detection first: window.__seComponents.detectAll()\n`;
+    }
+
+    const recipesJson = JSON.stringify(recipes, null, 2);
+
+    return `// StyleKit Recipe Definition
+// Generated by style-extractor
+// Source: ${normalizedData.source.url}
+
+import { createStyleRecipes } from "./factory";
+
+export const ${id}Recipes = createStyleRecipes("${slug}", "${name}", ${recipesJson});
+`;
   }
 
   // ============================================
@@ -597,6 +1081,9 @@
 
     // Generate JSON export
     files['style-tokens.json'] = JSON.stringify(normalizedData, null, 2);
+
+    // Generate recipe definition
+    files['style-recipes.ts'] = generateRecipesTypeScript(normalizedData);
 
     return files;
   }
@@ -747,6 +1234,22 @@ module.exports = ${JSON.stringify(config, null, 2)};
         this.normalize();
       }
       return generateFiles(normalizedData);
+    },
+
+    // Generate only recipe file
+    generateRecipes() {
+      if (!normalizedData) {
+        this.normalize();
+      }
+      return generateRecipesTypeScript(normalizedData);
+    },
+
+    // Get extracted recipes as structured data (for inspection)
+    getRecipes() {
+      if (!normalizedData) {
+        this.normalize();
+      }
+      return generateRecipesFromComponents(normalizedData);
     },
 
     // Full pipeline

@@ -97,6 +97,7 @@
 | **Tailwind** | `tailwind.config.js` | 直接用于 Tailwind 项目 |
 | **CSS Variables** | `variables.css` | 原生 CSS 使用 |
 | **StyleKit** | `stylekit.ts` | StyleKit 导入 |
+| **Recipes** | `style-recipes.ts` | StyleKit 组件 Recipe 定义 (NEW) |
 | **HTML** | `skeleton.html` | 页面骨架 (NEW) |
 | **React** | `react/*.tsx` | React 组件 (NEW) |
 | **Vue** | `vue/*.vue` | Vue 组件 (NEW) |
@@ -112,7 +113,7 @@
 | `library-detect.js` | 检测第三方动画库 |
 | `component-detect.js` | 组件模式检测和状态提取 |
 | `format-converter.js` | 多格式输出转换 |
-| `stylekit-adapter.js` | StyleKit 集成适配器 |
+| `stylekit-adapter.js` | StyleKit 集成适配器（含 Recipe 生成） |
 | `structure-extract.js` | 网站结构提取 |
 | `code-generator.js` | 框架代码生成 |
 | `export-schema.js` | 标准导出格式 |
@@ -132,6 +133,7 @@
 ├── tokens.json                 # 设计 tokens
 ├── tailwind.config.js          # Tailwind 配置
 ├── stylekit.ts                 # StyleKit 导入
+├── style-recipes.ts            # StyleKit 组件 Recipe (NEW)
 ├── variables.css               # CSS 变量
 │
 ├── structure/                  # 结构数据 (NEW)
@@ -161,9 +163,24 @@
 
 提取后导入 StyleKit：
 
-1. **直接导入**: 复制 `stylekit.ts` 到 StyleKit 的 `lib/styles/custom/`
-2. **通过 UI**: 在 StyleKit 的 `/create-style` 页面粘贴 JSON
-3. **MCP 工具**: 使用 StyleKit 的 `import_extracted_style` 工具
+1. **风格定义**: 复制 `stylekit.ts` 到 StyleKit 的 `lib/styles/`
+2. **组件 Recipe**: 复制 `style-recipes.ts` 到 StyleKit 的 `lib/recipes/`（需要 `factory.ts`）
+3. **通过 UI**: 在 StyleKit 的 `/create-style` 页面粘贴 JSON
+4. **MCP 工具**: 使用 StyleKit 的 `import_extracted_style` 工具
+
+### Recipe 生成 API
+
+```javascript
+// 完整提取（包含 recipes）
+const result = window.__seStyleKit.extract();
+console.log(result.files['style-recipes.ts']);
+
+// 仅生成 recipes 文件
+const recipesTs = window.__seStyleKit.generateRecipes();
+
+// 获取结构化 recipe 数据（用于检查）
+const recipes = window.__seStyleKit.getRecipes();
+```
 
 ## 参考与质量基准
 
