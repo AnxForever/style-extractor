@@ -1,23 +1,25 @@
 ---
 name: style-extractor
-description: Extract evidence-based web UI style + motion guides with multi-format output (Markdown, JSON, Tailwind, StyleKit). Now with website structure extraction and framework code generation.
+description: Extract design tokens (colors, typography, spacing, components) from live websites. Outputs Tailwind classes, CSS variables, JSON tokens, and AI-ready design system prompts.
 ---
 
-# Style Extractor v3.0 (Web Style + Motion + Components + Structure)
+# Style Extractor (Design Token Extraction from Live Websites)
 
-This skill extracts a reusable design system from **web UIs**: colors, typography, spacing, components, states, and—when the UI is dynamic—motion (runtime timings, keyframes, delay chains).
+This skill extracts a reusable **design token set** from live web UIs: colors, typography, spacing, component patterns, states, and motion evidence. Outputs are practical and AI-ready -- Tailwind classes, CSS variables, JSON tokens, TypeScript definitions, and structured prompts for consistent UI generation.
 
-**New in v3.0:**
+**Core capabilities:**
+- Color palette extraction with CIE2000 perceptual matching to Tailwind
+- Typography scale, font families, weights, line heights
+- Spacing/gap frequency analysis
+- Component detection (button, card, input, nav) with state diffs
+- Motion evidence (transitions, easings, keyframes)
+- AI-ready design system prompt generation
+- Confidence scoring for all extracted data
+
+**Additional modules (experimental):**
 - Website structure extraction (DOM tree, layout patterns, breakpoints)
-- Framework code generation (HTML skeleton, React TSX, Vue SFC)
-- Standard export format for style collection websites
-- Enhanced component boundary detection
-
-**v2.0 features:**
-- Multiple output formats (JSON, Tailwind, CSS Variables, StyleKit)
-- Enhanced component detection with state matrices
-- StyleKit integration for direct import
-- Stronger motion evidence requirements
+- Skeleton code generation (HTML, React TSX, Vue SFC) -- best-effort output
+- Standard export schema for design system sharing
 
 ## Output location (REQUIRED)
 
@@ -30,27 +32,19 @@ Recommended structure:
 ├── style.md                    # Main style guide
 ├── tokens.json                 # JSON tokens
 ├── tailwind.config.js          # Tailwind config
+├── style-tokens.ts             # StyleKit tokens (createStyleTokens)
+├── style-recipes.ts            # Component recipes (createStyleRecipes)
+├── design-system-prompt.md     # AI-ready design system prompt
 ├── stylekit.ts                 # StyleKit import file
 ├── variables.css               # CSS variables
 │
-├── structure/                  # Structure data (NEW)
+├── structure/                  # Structure data (experimental)
 │   ├── dom-tree.json
 │   ├── layout-patterns.json
 │   ├── breakpoints.json
 │   └── semantic.json
 │
-├── code/                       # Generated code (NEW)
-│   ├── skeleton.html
-│   ├── react/
-│   │   ├── Page.tsx
-│   │   ├── Header.tsx
-│   │   ├── Navigation.tsx
-│   │   ├── Hero.tsx
-│   │   └── Footer.tsx
-│   └── vue/
-│       └── *.vue
-│
-├── export.json                 # Standard export (NEW)
+├── export.json                 # Standard export
 │
 └── evidence/                   # Raw evidence
     ├── screenshots/
@@ -1595,27 +1589,25 @@ Include: complete state matrices for all variants
 Output: JSON + StyleKit for integration
 ```
 
-### Website replication (NEW in v3.0)
+### Website replication (experimental)
+
+> Note: Code generation produces best-effort skeleton output, not production-ready replicas.
 
 ```
-Replicate the structure of https://example.com
-Extract:
-- Full DOM structure with layout patterns
-- Responsive breakpoints
-- Component boundaries
-Generate:
-- React components (TypeScript)
-- HTML skeleton
-- Standard export for collection
+Extract the structure and tokens of https://example.com
+- Design tokens (colors, typography, spacing)
+- DOM structure and layout patterns
+- Component patterns with state transitions
+Output: All token formats + AI design system prompt
 ```
 
-### Full extraction with code generation (NEW in v3.0)
+### Full extraction with AI prompt
 
 ```
 Extract https://stripe.com/docs with:
 - Complete style tokens
-- Website structure (DOM tree, layouts, breakpoints)
-- React component generation
-- Standard export format
-Output: All formats + generated code
+- Component detection (buttons, inputs, cards)
+- AI-ready design system prompt
+- Confidence scoring
+Output: JSON + Tailwind + StyleKit + AI Prompt
 ```
