@@ -10,8 +10,8 @@
 // Usage:
 //   window.__seRegistry.register(module)
 //   window.__seRegistry.getModule(name)
-//   window.__seRegistry.extractAll(options)
-//   window.extractStyle(options)  // Unified entry point
+//   await window.__seRegistry.extractAll(options)
+//   await window.extractStyle(options)  // Unified entry point
 
 (() => {
   if (window.__seRegistry?.installed) return;
@@ -286,10 +286,10 @@
       name: 'structure',
       globalName: '__seStructure',
       version: '3.0.0',
-      description: 'DOM structure and layout extraction',
+      description: 'DOM structure and layout extraction (light DOM only)',
       dependencies: [],
       optionalDeps: ['utils'],
-      capabilities: ['dom', 'layout', 'breakpoints', 'semantic', 'shadow-dom'],
+      capabilities: ['dom', 'layout', 'breakpoints', 'semantic'],
       extract: () => window.__seStructure?.extract()
     },
     {
@@ -510,10 +510,51 @@
   // Unified Extraction
   // ============================================
 
+  function isPromiseLike(value) {
+    return !!value && typeof value.then === 'function';
+  }
+
+  function pushWarning(result, module, code, message, details) {
+    result.warnings.push({
+      module,
+      code,
+      message,
+      ...(details ? { details } : {})
+    });
+  }
+
+  function pushError(result, module, code, error, details) {
+    result.errors.push({
+      module,
+      code,
+      error,
+      ...(details ? { details } : {})
+    });
+  }
+
+  function setResultStatus(result) {
+    const dataKeys = Object.keys(result.data || {});
+    const hasData = dataKeys.length > 0;
+    const hasErrors = (result.errors?.length || 0) > 0;
+    const hasWarnings = (result.warnings?.length || 0) > 0;
+
+    let status = 'ok';
+    if (hasErrors && !hasData) status = 'error';
+    else if (!hasData) status = 'empty';
+    else if (hasErrors || hasWarnings) status = 'partial';
+
+    result.meta.status = status;
+    result.meta.dataKeys = dataKeys;
+    result.meta.errorCount = result.errors.length;
+    result.meta.warningCount = result.warnings.length;
+
+    return result;
+  }
+
   /**
    * Extract all available data
    */
-  function extractAll(options = {}) {
+  async function extractAll(options = {}) {
     const result = {
       meta: {
         url: location.href,
@@ -526,10 +567,35 @@
       warnings: []
     };
 
+    const requestedModules = Array.isArray(options.modules) ? options.modules : null;
+
     // Determine which modules to run
-    const modulesToRun = options.modules
-      ? options.modules.filter(m => hasModule(m))
+    const modulesToRun = requestedModules
+      ? requestedModules.filter(m => hasModule(m))
       : Array.from(modules.keys());
+
+    if (requestedModules) {
+      const unavailable = requestedModules.filter((m) => !hasModule(m));
+      if (unavailable.length > 0) {
+        pushWarning(
+          result,
+          'registry',
+          'MODULE_NOT_AVAILABLE',
+          `Requested modules not available: ${unavailable.join(', ')}`,
+          { requested: unavailable }
+        );
+      }
+    }
+
+    if (modulesToRun.length === 0) {
+      pushWarning(
+        result,
+        'registry',
+        'NO_MODULES_TO_RUN',
+        'No extraction modules are available for this request.'
+      );
+      return result;
+    }
 
     // Run each module
     for (const moduleName of modulesToRun) {
@@ -540,23 +606,26 @@
         // Check dependencies
         const deps = checkDependencies(moduleName);
         if (!deps.valid) {
-          result.warnings.push({
-            module: moduleName,
-            message: `Missing dependencies: ${deps.missing.join(', ')}`
-          });
+          pushWarning(
+            result,
+            moduleName,
+            'DEPENDENCY_MISSING',
+            `Missing dependencies: ${deps.missing.join(', ')}`,
+            { missing: deps.missing }
+          );
         }
 
         // Run extraction
         const moduleResult = module.extract(result.data);
-        if (moduleResult !== undefined) {
-          result.data[moduleName] = moduleResult;
+        const resolvedResult = isPromiseLike(moduleResult)
+          ? await moduleResult
+          : moduleResult;
+        if (resolvedResult !== undefined) {
+          result.data[moduleName] = resolvedResult;
           result.meta.modules.push(moduleName);
         }
       } catch (e) {
-        result.errors.push({
-          module: moduleName,
-          error: e.message
-        });
+        pushError(result, moduleName, 'MODULE_EXTRACT_FAILED', e.message);
       }
     }
 
@@ -566,7 +635,7 @@
   /**
    * Quick extraction with common presets
    */
-  function quickExtract(preset = 'full') {
+  async function quickExtract(preset = 'full') {
     const presets = {
       minimal: ['structure', 'css'],
       style: ['css', 'stylekit', 'theme'],
@@ -617,6 +686,7 @@
    * @param {boolean} options.includeConfidence - Include confidence scoring report
    * @param {string} options.format - Output format: 'raw', 'json', 'tailwind', 'stylekit'
    * @param {string} options.depth - Blueprint detail level: 'overview', 'section', 'full' (default: 'full')
+   * @returns {Promise<Object>} Extraction result
    */
   function toFormatInputFromStyleKit(stylekitResult, fallbackMeta = {}) {
     const normalized = stylekitResult?.normalized || {};
@@ -713,7 +783,7 @@
     return compressed;
   }
 
-  function extractStyle(options = {}) {
+  async function extractStyle(options = {}) {
     // Re-run auto-register so modules loaded after registry init can join the run.
     autoRegister();
 
@@ -735,25 +805,30 @@
 
     // Run extraction
     const result = requestedModules
-      ? extractAll({ modules: requestedModules })
-      : quickExtract(preset);
+      ? await extractAll({ modules: requestedModules })
+      : await quickExtract(preset);
 
     // Add code generation if requested
     if ((includeCode || replicaMode) && result.data.structure) {
       try {
         result.data.code = window.__seCodeGen?.generate(result.data.structure, 'all');
       } catch (e) {
-        result.warnings.push({ module: 'codegen', message: e.message });
+        pushWarning(result, 'codegen', 'EXTRACTION_OPTION_FAILED', e.message);
       }
+    } else if (includeCode && !window.__seCodeGen?.installed) {
+      pushWarning(result, 'codegen', 'MODULE_NOT_AVAILABLE', 'Code generation requested but __seCodeGen is not installed.');
     }
 
     // Add theme extraction if requested
     if ((includeTheme || replicaMode) && window.__seTheme?.installed) {
       try {
-        result.data.themes = window.__seTheme.extractBothThemes();
+        const themes = window.__seTheme.extractBothThemes();
+        result.data.themes = isPromiseLike(themes) ? await themes : themes;
       } catch (e) {
-        result.warnings.push({ module: 'theme', message: e.message });
+        pushWarning(result, 'theme', 'EXTRACTION_OPTION_FAILED', e.message);
       }
+    } else if (includeTheme) {
+      pushWarning(result, 'theme', 'MODULE_NOT_AVAILABLE', 'Theme extraction requested but __seTheme is not installed.');
     }
 
     // Add AI semantic output if requested
@@ -764,8 +839,10 @@
           states: result.data['state-capture'] || {}
         });
       } catch (e) {
-        result.warnings.push({ module: 'ai-semantic', message: e.message });
+        pushWarning(result, 'ai-semantic', 'EXTRACTION_OPTION_FAILED', e.message);
       }
+    } else if (includeAISemantic) {
+      pushWarning(result, 'ai-semantic', 'MODULE_NOT_AVAILABLE', 'AI semantic extraction requested but __seAISemantic is not installed.');
     }
 
     // Add StyleKit recipes if requested (auto-include for full/replica presets)
@@ -774,8 +851,10 @@
         result.data.recipes = window.__seStyleKit.getRecipes();
         result.data.recipesFile = window.__seStyleKit.generateRecipes();
       } catch (e) {
-        result.warnings.push({ module: 'stylekit-recipes', message: e.message });
+        pushWarning(result, 'stylekit-recipes', 'EXTRACTION_OPTION_FAILED', e.message);
       }
+    } else if (includeRecipes) {
+      pushWarning(result, 'stylekit-recipes', 'MODULE_NOT_AVAILABLE', 'Recipe generation requested but __seStyleKit is not installed.');
     }
 
     // Add StyleKit tokens (createStyleTokens format) for full/replica presets
@@ -783,7 +862,7 @@
       try {
         result.data.styleTokensFile = window.__seStyleKit.generateTokens();
       } catch (e) {
-        result.warnings.push({ module: 'stylekit-tokens', message: e.message });
+        pushWarning(result, 'stylekit-tokens', 'EXTRACTION_OPTION_FAILED', e.message);
       }
     }
 
@@ -792,8 +871,10 @@
       try {
         result.data.designSystemPrompt = window.__seStyleKit.generatePrompt();
       } catch (e) {
-        result.warnings.push({ module: 'stylekit-prompt', message: e.message });
+        pushWarning(result, 'stylekit-prompt', 'EXTRACTION_OPTION_FAILED', e.message);
       }
+    } else if (includePrompt) {
+      pushWarning(result, 'stylekit-prompt', 'MODULE_NOT_AVAILABLE', 'Prompt generation requested but __seStyleKit is not installed.');
     }
 
     // Add confidence report if requested (auto-include for full preset)
@@ -801,8 +882,10 @@
       try {
         result.data.confidenceReport = window.__seStyleKit.getConfidenceReport();
       } catch (e) {
-        result.warnings.push({ module: 'stylekit-confidence', message: e.message });
+        pushWarning(result, 'stylekit-confidence', 'EXTRACTION_OPTION_FAILED', e.message);
       }
+    } else if (includeConfidence) {
+      pushWarning(result, 'stylekit-confidence', 'MODULE_NOT_AVAILABLE', 'Confidence report requested but __seStyleKit is not installed.');
     }
 
     // Format output if requested
@@ -824,8 +907,12 @@
             break;
         }
       } catch (e) {
-        result.warnings.push({ module: 'format', message: e.message });
+        pushWarning(result, 'format', 'FORMAT_CONVERSION_FAILED', e.message);
       }
+    } else if (format !== 'raw' && !window.__seFormat?.installed) {
+      pushWarning(result, 'format', 'MODULE_NOT_AVAILABLE', `Format "${format}" requested but __seFormat is not installed.`);
+    } else if (format !== 'raw' && !result.data.stylekit) {
+      pushWarning(result, 'format', 'MISSING_STYLEKIT_DATA', `Format "${format}" requested but stylekit data is unavailable.`);
     }
 
     if (replicaMode) {
@@ -837,7 +924,7 @@
       result.data.blueprint = compressBlueprint(result.data.blueprint, depth);
     }
 
-    return result;
+    return setResultStatus(result);
   }
 
   // ============================================

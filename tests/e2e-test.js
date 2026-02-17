@@ -18,26 +18,32 @@
     summary: { passed: 0, failed: 0 }
   };
 
+  let testQueue = Promise.resolve();
+
   function test(name, fn) {
-    try {
-      const result = fn();
-      const passed = result.success !== false;
-      results.tests.push({
-        name,
-        passed,
-        result: result.success !== false ? result : null,
-        error: result.success === false ? result.error : null
-      });
-      if (passed) results.summary.passed++;
-      else results.summary.failed++;
-      console.log(`${passed ? '[PASS]' : '[FAIL]'} ${name}`);
-      return result;
-    } catch (e) {
-      results.tests.push({ name, passed: false, error: e.message });
-      results.summary.failed++;
-      console.error(`[FAIL] ${name}:`, e.message);
-      return { success: false, error: e.message };
-    }
+    testQueue = testQueue.then(async () => {
+      try {
+        const result = await fn();
+        const passed = result.success !== false;
+        results.tests.push({
+          name,
+          passed,
+          result: result.success !== false ? result : null,
+          error: result.success === false ? result.error : null
+        });
+        if (passed) results.summary.passed++;
+        else results.summary.failed++;
+        console.log(`${passed ? '[PASS]' : '[FAIL]'} ${name}`);
+        return result;
+      } catch (e) {
+        results.tests.push({ name, passed: false, error: e.message });
+        results.summary.failed++;
+        console.error(`[FAIL] ${name}:`, e.message);
+        return { success: false, error: e.message };
+      }
+    });
+
+    return testQueue;
   }
 
   // ============================================
@@ -447,7 +453,7 @@
       fileCount: Object.keys(result.files).length,
       hasRecipes: 'style-recipes.ts' in result.files,
       hasPrompt: 'design-system-prompt.md' in result.files,
-      hasTokens: 'style-tokens.json' in result.files,
+      hasTokens: 'tokens.json' in result.files,
       hasStyleTokens: 'style-tokens.ts' in result.files,
     };
   });
@@ -536,11 +542,11 @@
   // Test 6: Unified Entry Point (extractStyle)
   // ============================================
 
-  test('extractStyle - with recipe/prompt/confidence options', () => {
+  test('extractStyle - with recipe/prompt/confidence options', async () => {
     if (typeof window.extractStyle !== 'function') {
       return { success: false, error: 'extractStyle not available' };
     }
-    const result = window.extractStyle({
+    const result = await window.extractStyle({
       preset: 'components',
       includeRecipes: true,
       includePrompt: true,
@@ -548,6 +554,7 @@
     });
     return {
       success: true,
+      hasStatus: ['ok', 'partial', 'empty', 'error'].includes(result.meta?.status),
       hasRecipes: !!result.data?.recipes,
       hasRecipesFile: typeof result.data?.recipesFile === 'string',
       hasPrompt: typeof result.data?.designSystemPrompt === 'string',
@@ -574,6 +581,8 @@
   // ============================================
   // Summary
   // ============================================
+
+  await testQueue;
 
   console.log('\n========================================');
   console.log(`E2E Test Results: ${results.summary.passed}/${results.tests.length} passed`);

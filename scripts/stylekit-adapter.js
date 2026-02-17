@@ -1908,7 +1908,7 @@ export const ${id}Tokens = createStyleTokens(${tokensJson});
     files['tailwind.config.js'] = generateTailwindConfig(normalizedData);
 
     // Generate JSON export
-    files['style-tokens.json'] = JSON.stringify(normalizedData, null, 2);
+    files['tokens.json'] = JSON.stringify(normalizedData, null, 2);
 
     // Generate recipe definition
     files['style-recipes.ts'] = generateRecipesTypeScript(normalizedData);

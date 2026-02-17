@@ -1,6 +1,6 @@
 // Style Extractor v3.2 - Script Loader
 //
-// Loads all 22 scripts in correct dependency order.
+// Loads all 23 scripts in correct dependency order.
 //
 // Usage:
 //   Method 1: Paste into browser console
@@ -130,7 +130,7 @@
   } else {
     console.log('[style-extractor] All critical modules verified.');
     if (window.extractStyle) {
-      console.log('[style-extractor] Ready! Use: extractStyle({ preset: "full" })');
+      console.log('[style-extractor] Ready! Use: await extractStyle({ preset: "full" })');
     }
   }
 

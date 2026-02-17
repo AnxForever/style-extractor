@@ -64,9 +64,23 @@ style-extractor injects into a live webpage via Chrome DevTools and reads the ac
    ```
 4. Run extraction:
    ```javascript
-   const result = extractStyle({ preset: 'full' });
+   const result = await extractStyle({ preset: 'full' });
    console.log(result.data);
    ```
+
+### Automated smoke test (CI-friendly)
+
+From the project root (`D:/stylekit`):
+
+```bash
+npm run test:style-extractor
+```
+
+For CI (syntax + consistency + tests):
+
+```bash
+npm run test:style-extractor:ci
+```
 
 ## API
 
@@ -74,10 +88,14 @@ style-extractor injects into a live webpage via Chrome DevTools and reads the ac
 
 ```javascript
 // Full extraction with all modules
-const result = extractStyle({ preset: 'full' });
+const result = await extractStyle({ preset: 'full' });
 
 // Presets: 'minimal', 'style', 'components', 'full'
 // Options: includeRecipes, includePrompt, includeConfidence
+
+// Result health metadata
+// result.meta.status: 'ok' | 'partial' | 'empty' | 'error'
+// result.warnings[*].code / result.errors[*].code provide machine-readable issue types
 ```
 
 ### StyleKit adapter
