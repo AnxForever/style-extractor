@@ -1082,7 +1082,7 @@ window.__seStyleKit.getConfidenceReport()
 | `design-system-prompt.md` | Markdown | AI System Prompt with tokens + component states |
 | `variables.css` | CSS | CSS custom properties |
 | `tailwind.config.js` | JavaScript | Tailwind theme extension |
-| `style-tokens.json` | JSON | Raw normalized token data |
+| `tokens.json` | JSON | Raw normalized token data |
 
 **Color matching:** Uses CIE2000 Delta-E perceptual distance (not RGB euclidean) for Tailwind color approximation.
 
@@ -1611,3 +1611,368 @@ Extract https://stripe.com/docs with:
 - Confidence scoring
 Output: JSON + Tailwind + StyleKit + AI Prompt
 ```
+
+### Design recommendation (Phase 5)
+
+After extracting tokens, cross-reference against the embedded knowledge base:
+
+```
+Extract https://example.com then:
+- Identify which UI style category the site matches
+- Recommend color palette improvements based on product type
+- Suggest font pairings that match the detected mood
+- Run UX quick-check against critical guidelines
+Output: Style guide + Recommendations report
+```
+
+---
+
+## Phase 5 — Design Recommendation (Post-Extraction)
+
+After extracting tokens (Phase 1-4), use the embedded knowledge base to enrich results:
+
+### 5.1 Style Identification
+
+Compare extracted tokens against the **Style Reference** below. Match by:
+1. Color palette similarity (primary/secondary hex distance)
+2. CSS property patterns (border-radius, box-shadow, backdrop-filter)
+3. Animation characteristics (duration, easing, effects)
+4. Keywords from AI Prompt Keywords column
+
+Output: Top 3 matching style categories with confidence score.
+
+### 5.2 Color Palette Recommendation
+
+Match the extracted site's product type against the **Product Color Palette Reference**. Compare:
+1. Extracted primary color vs recommended primary
+2. CTA color contrast ratio
+3. Background/text readability
+
+Output: Current palette assessment + recommended palette for the product type.
+
+### 5.3 Font Pairing Suggestion
+
+Match extracted font families against the **Typography Reference**. If fonts are generic or suboptimal:
+1. Identify mood/style from extracted design tokens
+2. Find matching font pairing by mood keywords
+3. Provide Google Fonts URL + CSS import + Tailwind config
+
+### 5.4 UX Quick Check
+
+Run extracted evidence against the **UX Checklist** (HIGH/CRITICAL severity items only):
+- Touch targets >= 44x44px
+- Color contrast >= 4.5:1
+- Focus states visible
+- Loading states present
+- Reduced motion respected
+- Form labels associated
+- Alt text on images
+
+Output: Pass/Fail checklist with specific findings.
+
+---
+
+## Knowledge Base: Style Reference (68 Categories)
+
+Compact reference for style identification. Match extracted tokens against these patterns.
+
+| # | Style | Type | Keywords | Primary Colors | Effects | Best For | CSS Patterns |
+|---|-------|------|----------|---------------|---------|----------|-------------|
+| 1 | Minimalism & Swiss | General | clean, spacious, grid, sans-serif | Black #000, White #FFF | Subtle hover 200-250ms, sharp shadows | Enterprise, dashboards, SaaS | `grid, gap:2rem, sans-serif, no box-shadow` |
+| 2 | Neumorphism | General | soft UI, embossed, rounded 12-16px | Soft Blue #C8E0F4, Soft Pink #F5E0E8 | Multi box-shadow (-5px/-5px + 5px/5px), press 150ms | Wellness, meditation, fitness | `border-radius:14px, box-shadow:multi-layer, pastel bg` |
+| 3 | Glassmorphism | General | frosted glass, blur, translucent | rgba(255,255,255,0.1-0.3) | backdrop-filter blur 10-20px, 1px border | Modern SaaS, financial, modals | `backdrop-filter:blur(15px), rgba bg, subtle border` |
+| 4 | Brutalism | General | raw, stark, anti-design, bold | Red #F00, Blue #00F, Yellow #FF0 | No transitions, sharp corners 0px | Design portfolios, editorial | `border-radius:0, transition:none, font-weight:700+` |
+| 5 | 3D & Hyperrealism | General | depth, textures, 3D, immersive | Navy #001F3F, Gold #FFD700 | WebGL, parallax 3-5 layers, 300-400ms | Gaming, product showcase | `perspective:1000px, translate3d, complex shadows` |
+| 6 | Vibrant Block-based | General | bold, energetic, geometric | Neon Green #39FF14, Purple #BF00FF | Large sections 48px+ gaps, scroll-snap | Startups, gaming, youth | `grid large gaps, font-size:32px+, vibrant colors` |
+| 7 | Dark Mode OLED | General | dark, OLED, eye-friendly | Black #000, Dark Grey #121212 | Minimal glow text-shadow, high readability | Night-mode, coding, entertainment | `bg:#000/#121212, neon accents, color-scheme:dark` |
+| 8 | Accessible & Ethical | General | WCAG AAA, high contrast, semantic | 7:1+ contrast ratio | Focus rings 3-4px, ARIA, skip links, 44x44px targets | Government, healthcare, education | `contrast:7:1+, font:16px+, focus-visible:3-4px` |
+| 9 | Claymorphism | General | soft 3D, chunky, bubbly, toy-like | Peach #FDBCB4, Baby Blue #ADD8E6 | Inner+outer shadows, soft press 200ms | Educational, children's, creative | `border-radius:20px, border:3-4px, double shadows` |
+| 10 | Aurora UI | General | mesh gradient, Northern Lights | Blue-Orange, Purple-Yellow complementary | Flowing gradients 8-12s animation | Modern SaaS, creative, hero sections | `conic-gradient, animation:8-12s, blend-mode:screen` |
+| 11 | Retro-Futurism | General | 80s, neon glow, CRT, synthwave | Neon Blue #0080FF, Pink #FF006E, Cyan #0FF | CRT scanlines, neon glow, glitch effects | Gaming, entertainment, music | `text-shadow:neon, monospace, animation:glitch` |
+| 12 | Flat Design | General | 2D, bold colors, no shadows | Solid bright limited 4-6 palette | No gradients/shadows, 150-200ms transitions | Web/mobile apps, SaaS, dashboards | `box-shadow:none, solid bg, no gradients` |
+| 13 | Skeuomorphism | General | realistic, texture, 3D, tactile | Wood/leather/metal colors | Realistic shadows, textures, 300-500ms | Legacy apps, gaming, luxury | `gradient:8-12 stops, texture overlay, multi-shadow` |
+| 14 | Liquid Glass | General | morphing, fluid, iridescent | Iridescent rainbow, translucent | SVG morphing 400-600ms, dynamic blur | Premium SaaS, luxury portfolios | `animation:morph, backdrop-filter, hue-rotate` |
+| 15 | Motion-Driven | General | animation-heavy, parallax, scroll | Bold + dynamic gradients | Scroll anim, parallax 3-5 layers, 300-400ms | Portfolio, storytelling, entertainment | `IntersectionObserver, will-change:transform, parallax` |
+| 16 | Micro-interactions | General | small anim, gesture, tactile | Subtle color shifts 10-20% | 50-100ms hover, loading spinners, haptic | Mobile apps, productivity, consumer | `transition:50-100ms, :active, haptic feedback` |
+| 17 | Inclusive Design | General | color-blind, haptic, voice, WCAG AAA | 7:1+ contrast, symbol-based | Haptic, voice, focus 4px+, reduced motion | Public services, education, healthcare | `aria-*, focus-visible:4px, prefers-reduced-motion` |
+| 18 | Zero Interface | General | voice-first, gesture, AI-driven | Neutral #FAFAFA, light grey | Voice recognition, progressive disclosure | Voice assistants, AI, smart home | `Web Speech API, minimal visible UI` |
+| 19 | Soft UI Evolution | General | evolved neumorphism, better contrast | Soft Blue #87CEEB, Pink #FFB6C1 | Improved shadows, 200-300ms, WCAG AA+ | Modern enterprise, SaaS, health | `box-shadow:softer, border-radius:10px, contrast:4.5:1+` |
+| 38 | Neubrutalism | General | bold borders, black outlines, 45deg shadows | Yellow #FFEB3B, Red #FF5252, Blue #2196F3 | box-shadow:4px 4px 0 #000, border:3px solid | Gen Z, startups, Figma-style | `border:3px solid black, hard shadow offset, no blur` |
+| 39 | Bento Box Grid | General | modular cards, Apple-style, asymmetric | White #FFF, #F5F5F5 + brand accent | Hover scale 1.02, subtle shadows, rounded-xl | Dashboards, product pages, portfolios | `grid varied spans, border-radius:24px, soft shadow` |
+| 40 | Y2K Aesthetic | General | neon pink, chrome, metallic, glossy | Hot Pink #FF69B4, Cyan #0FF, Silver #C0C0C0 | Metallic gradients, glossy, glow animations | Fashion, music, Gen Z, nostalgia | `linear-gradient metallic, drop-shadow glow, bubbles` |
+| 41 | Cyberpunk UI | General | neon, terminal, HUD, glitch | Matrix Green #0F0, Magenta #F0F, Cyan #0FF | Neon glow, glitch, scanlines, terminal fonts | Gaming, crypto, developer tools | `bg:#0D0D0D, text-shadow:neon, monospace, glitch` |
+| 42 | Organic Biophilic | General | nature, green, sustainable, earthy | Forest #228B22, Brown #8B4513, Sky #87CEEB | Organic curves, natural shadows, flowing SVG | Wellness, sustainability, eco | `border-radius:varied, earth tones, organic shapes` |
+| 43 | AI-Native UI | General | chatbot, conversational, streaming | AI Purple #6366F1, Success #10B981 | Typing indicators, streaming text, pulse | AI products, chatbots, copilots | `chat bubbles, typing animation, sticky input` |
+| 44 | Memphis Design | General | 80s, geometric, postmodern, squiggles | Hot Pink #FF71CE, Yellow #FFCE5C, Teal #86CCCA | clip-path, rotate, mix-blend-mode, patterns | Creative agencies, music, youth | `clip-path:polygon, repeating patterns, rotate` |
+| 45 | Vaporwave | General | synthwave, 80s-90s, sunset, dreamy | Pink #FF71CE, Cyan #01CDFE, Purple #B967FF | Sunset gradients, glitch, VHS, neon glow | Music, gaming, creative portfolios | `linear-gradient sunset, hue-rotate, retro grid` |
+| 46 | Dimensional Layering | General | depth, z-index, elevation, floating | Neutral base + brand accent | z-index stacking, elevation shadows 4 levels | Dashboards, cards, modals, SaaS | `z-index:1-4, box-shadow:elevation scale, translateZ` |
+| 47 | Exaggerated Minimalism | General | oversized type, negative space, bold | Black #000, White #FFF, single accent | clamp(3rem,10vw,12rem), font-weight:900 | Fashion, architecture, portfolios | `font-size:clamp huge, padding:8rem+, single accent` |
+| 48 | Kinetic Typography | General | motion text, typing effect, morphing | High contrast, gradient text fills | @keyframes text, typing steps(), GSAP SplitText | Hero sections, marketing, creative | `background-clip:text, letter animation, scroll-trigger` |
+| 51 | HUD / Sci-Fi FUI | General | futuristic, wireframe, iron man | Neon Cyan #0FF, Holo Blue #0080FF | Glow, scanning, ticker, blinking markers | Sci-fi games, cybersecurity | `border:1px rgba cyan, monospace, transparent bg` |
+| 52 | Pixel Art | General | 8-bit, retro, gaming, blocky | NES palette, limited brights | Frame-by-frame, instant transitions | Indie games, retro tools, NFT | `image-rendering:pixelated, pixel font, box-shadow pixels` |
+| 55 | Spatial UI VisionOS | General | glass, depth, gaze, gesture | Frosted Glass 15-30% opacity | Parallax depth, gaze-hover, dynamic lighting | Spatial computing, VR/AR | `backdrop-filter:blur(40px) saturate(180%), scale on focus` |
+| 56 | E-Ink / Paper | General | paper, matte, calm, monochrome | Off-White #FDFBF7, Ink #1A1A1A | No animations, grain texture, sharp transitions | Reading apps, journals, writing | `bg:#FDFBF7, transition:none, serif, no gradients` |
+| 57 | Gen Z Chaos | General | chaos, stickers, collage, loud | Clashing #F0F, #0F0, #FF0, #00F | Marquee, jitter, sticker layers, GIF overload | Gen Z lifestyle, viral marketing | `mix-blend-mode, random rotate, saturate(150%)` |
+| 66 | Editorial Grid | General | magazine, asymmetric, pull quotes | Black #000, White #FFF + accent | Scroll reveal, parallax images, page-flip | News, blogs, magazines, publishing | `grid named areas, column-count, ::first-letter` |
+| 68 | Vintage Analog | General | film grain, VHS, polaroid, sepia | Cream #F5E6C8, Sepia #D4A574, Teal #4A7B7C | Film grain overlay, VHS tracking, light leaks | Photography, music, vintage fashion | `filter:sepia() contrast(), noise texture, warm tint` |
+
+## Knowledge Base: Product Color Palettes (96 Types)
+
+Cross-reference extracted primary/secondary/CTA colors against these industry-standard palettes to identify product type and recommend improvements.
+
+**Matching logic:** Calculate color distance (deltaE) between extracted colors and each row. Closest match = likely product type. If distance > 30, the site uses a custom palette.
+
+| # | Product Type | Primary | Secondary | CTA | BG | Text | Border | Notes |
+|---|---|---|---|---|---|---|---|---|
+| 1 | SaaS (General) | #2563EB | #3B82F6 | #F97316 | #F8FAFC | #1E293B | #E2E8F0 | Trust blue + orange CTA |
+| 2 | Micro SaaS | #6366F1 | #818CF8 | #10B981 | #F5F3FF | #1E1B4B | #E0E7FF | Indigo + emerald CTA |
+| 3 | E-commerce | #059669 | #10B981 | #F97316 | #ECFDF5 | #064E3B | #A7F3D0 | Green + urgency orange |
+| 4 | E-commerce Luxury | #1C1917 | #44403C | #CA8A04 | #FAFAF9 | #0C0A09 | #D6D3D1 | Dark + gold accent |
+| 5 | Service Landing | #0EA5E9 | #38BDF8 | #F97316 | #F0F9FF | #0C4A6E | #BAE6FD | Sky blue + warm CTA |
+| 6 | B2B Service | #0F172A | #334155 | #0369A1 | #F8FAFC | #020617 | #E2E8F0 | Navy + blue CTA |
+| 7 | Financial Dashboard | #0F172A | #1E293B | #22C55E | #020617 | #F8FAFC | #334155 | Dark + green indicators |
+| 8 | Analytics Dashboard | #1E40AF | #3B82F6 | #F59E0B | #F8FAFC | #1E3A8A | #DBEAFE | Blue + amber highlights |
+| 9 | Healthcare App | #0891B2 | #22D3EE | #059669 | #ECFEFF | #164E63 | #A5F3FC | Cyan + health green |
+| 10 | Educational App | #4F46E5 | #818CF8 | #F97316 | #EEF2FF | #1E1B4B | #C7D2FE | Indigo + orange |
+| 11 | Creative Agency | #EC4899 | #F472B6 | #06B6D4 | #FDF2F8 | #831843 | #FBCFE8 | Pink + cyan |
+| 12 | Portfolio/Personal | #18181B | #3F3F46 | #2563EB | #FAFAFA | #09090B | #E4E4E7 | Mono + blue accent |
+| 13 | Gaming | #7C3AED | #A78BFA | #F43F5E | #0F0F23 | #E2E8F0 | #4C1D95 | Neon purple + rose |
+| 14 | Government | #0F172A | #334155 | #0369A1 | #F8FAFC | #020617 | #E2E8F0 | High contrast navy |
+| 15 | Fintech/Crypto | #F59E0B | #FBBF24 | #8B5CF6 | #0F172A | #F8FAFC | #334155 | Gold + purple tech |
+| 16 | Social Media | #E11D48 | #FB7185 | #2563EB | #FFF1F2 | #881337 | #FECDD3 | Rose + engagement blue |
+| 17 | Productivity Tool | #0D9488 | #14B8A6 | #F97316 | #F0FDFA | #134E4A | #99F6E4 | Teal + action orange |
+| 18 | Design System | #4F46E5 | #6366F1 | #F97316 | #EEF2FF | #312E81 | #C7D2FE | Indigo + doc hierarchy |
+| 19 | AI/Chatbot | #7C3AED | #A78BFA | #06B6D4 | #FAF5FF | #1E1B4B | #DDD6FE | Purple + cyan |
+| 20 | NFT/Web3 | #8B5CF6 | #A78BFA | #FBBF24 | #0F0F23 | #F8FAFC | #4C1D95 | Purple + gold |
+| 21 | Creator Economy | #EC4899 | #F472B6 | #F97316 | #FDF2F8 | #831843 | #FBCFE8 | Pink + orange |
+| 22 | Sustainability/ESG | #059669 | #10B981 | #0891B2 | #ECFDF5 | #064E3B | #A7F3D0 | Green + ocean blue |
+| 23 | Remote Work/Collab | #6366F1 | #818CF8 | #10B981 | #F5F3FF | #312E81 | #E0E7FF | Indigo + success green |
+| 24 | Mental Health | #8B5CF6 | #C4B5FD | #10B981 | #FAF5FF | #4C1D95 | #EDE9FE | Lavender + wellness green |
+| 25 | Pet Tech | #F97316 | #FB923C | #2563EB | #FFF7ED | #9A3412 | #FED7AA | Orange + trust blue |
+| 26 | Smart Home/IoT | #1E293B | #334155 | #22C55E | #0F172A | #F8FAFC | #475569 | Dark + status green |
+| 27 | EV/Charging | #0891B2 | #22D3EE | #22C55E | #ECFEFF | #164E63 | #A5F3FC | Cyan + eco green |
+| 28 | Subscription Box | #D946EF | #E879F9 | #F97316 | #FDF4FF | #86198F | #F5D0FE | Purple + urgency orange |
+| 29 | Podcast | #1E1B4B | #312E81 | #F97316 | #0F0F23 | #F8FAFC | #4338CA | Dark audio + warm |
+| 30 | Dating App | #E11D48 | #FB7185 | #F97316 | #FFF1F2 | #881337 | #FECDD3 | Rose + warm orange |
+| 31 | Micro-Credentials | #0369A1 | #0EA5E9 | #CA8A04 | #F0F9FF | #0C4A6E | #BAE6FD | Blue + achievement gold |
+| 32 | Knowledge Base | #475569 | #64748B | #2563EB | #F8FAFC | #1E293B | #E2E8F0 | Grey + link blue |
+| 33 | Hyperlocal Services | #059669 | #10B981 | #F97316 | #ECFDF5 | #064E3B | #A7F3D0 | Green + action orange |
+| 34 | Beauty/Spa | #EC4899 | #F9A8D4 | #8B5CF6 | #FDF2F8 | #831843 | #FBCFE8 | Pink + lavender |
+| 35 | Luxury/Premium | #1C1917 | #44403C | #CA8A04 | #FAFAF9 | #0C0A09 | #D6D3D1 | Black + gold |
+| 36 | Restaurant/Food | #DC2626 | #F87171 | #CA8A04 | #FEF2F2 | #450A0A | #FECACA | Red + warm gold |
+| 37 | Fitness/Gym | #F97316 | #FB923C | #22C55E | #1F2937 | #F8FAFC | #374151 | Orange + success green |
+| 38 | Real Estate | #0F766E | #14B8A6 | #0369A1 | #F0FDFA | #134E4A | #99F6E4 | Teal + professional blue |
+| 39 | Travel/Tourism | #0EA5E9 | #38BDF8 | #F97316 | #F0F9FF | #0C4A6E | #BAE6FD | Sky blue + adventure orange |
+| 40 | Hotel/Hospitality | #1E3A8A | #3B82F6 | #CA8A04 | #F8FAFC | #1E40AF | #BFDBFE | Navy + gold service |
+| 41 | Wedding/Event | #DB2777 | #F472B6 | #CA8A04 | #FDF2F8 | #831843 | #FBCFE8 | Pink + elegant gold |
+| 42 | Legal Services | #1E3A8A | #1E40AF | #B45309 | #F8FAFC | #0F172A | #CBD5E1 | Navy + trust gold |
+| 43 | Insurance | #0369A1 | #0EA5E9 | #22C55E | #F0F9FF | #0C4A6E | #BAE6FD | Blue + protected green |
+| 44 | Banking/Finance | #0F172A | #1E3A8A | #CA8A04 | #F8FAFC | #020617 | #E2E8F0 | Navy + premium gold |
+| 45 | Online Course | #0D9488 | #2DD4BF | #F97316 | #F0FDFA | #134E4A | #5EEAD4 | Teal + achievement orange |
+| 46 | Non-profit/Charity | #0891B2 | #22D3EE | #F97316 | #ECFEFF | #164E63 | #A5F3FC | Blue + action orange |
+| 47 | Music Streaming | #1E1B4B | #4338CA | #22C55E | #0F0F23 | #F8FAFC | #312E81 | Dark + play green |
+| 48 | Video Streaming | #0F0F23 | #1E1B4B | #E11D48 | #000000 | #F8FAFC | #312E81 | Cinema dark + play red |
+| 49 | Job Board | #0369A1 | #0EA5E9 | #22C55E | #F0F9FF | #0C4A6E | #BAE6FD | Blue + success green |
+| 50 | Marketplace (P2P) | #7C3AED | #A78BFA | #22C55E | #FAF5FF | #4C1D95 | #DDD6FE | Purple + transaction green |
+| 51 | Logistics/Delivery | #2563EB | #3B82F6 | #F97316 | #EFF6FF | #1E40AF | #BFDBFE | Blue + delivery orange |
+| 52 | Agriculture/Farm | #15803D | #22C55E | #CA8A04 | #F0FDF4 | #14532D | #BBF7D0 | Earth green + harvest gold |
+| 53 | Construction | #64748B | #94A3B8 | #F97316 | #F8FAFC | #334155 | #E2E8F0 | Grey + safety orange |
+| 54 | Automotive | #1E293B | #334155 | #DC2626 | #F8FAFC | #0F172A | #E2E8F0 | Dark + action red |
+| 55 | Photography | #18181B | #27272A | #F8FAFC | #000000 | #FAFAFA | #3F3F46 | Black + white contrast |
+| 56 | Coworking Space | #F59E0B | #FBBF24 | #2563EB | #FFFBEB | #78350F | #FDE68A | Amber + booking blue |
+| 57 | Cleaning Service | #0891B2 | #22D3EE | #22C55E | #ECFEFF | #164E63 | #A5F3FC | Cyan + clean green |
+| 58 | Home Services | #1E40AF | #3B82F6 | #F97316 | #EFF6FF | #1E3A8A | #BFDBFE | Blue + urgent orange |
+| 59 | Childcare/Daycare | #F472B6 | #FBCFE8 | #22C55E | #FDF2F8 | #9D174D | #FCE7F3 | Pink + safe green |
+| 60 | Senior Care | #0369A1 | #38BDF8 | #22C55E | #F0F9FF | #0C4A6E | #E0F2FE | Blue + reassuring green |
+| 61 | Medical Clinic | #0891B2 | #22D3EE | #22C55E | #F0FDFA | #134E4A | #CCFBF1 | Teal + health green |
+| 62 | Pharmacy | #15803D | #22C55E | #0369A1 | #F0FDF4 | #14532D | #BBF7D0 | Green + trust blue |
+| 63 | Dental Practice | #0EA5E9 | #38BDF8 | #FBBF24 | #F0F9FF | #0C4A6E | #BAE6FD | Blue + smile yellow |
+| 64 | Veterinary | #0D9488 | #14B8A6 | #F97316 | #F0FDFA | #134E4A | #99F6E4 | Teal + warm orange |
+| 65 | Florist/Plant | #15803D | #22C55E | #EC4899 | #F0FDF4 | #14532D | #BBF7D0 | Green + floral pink |
+| 66 | Bakery/Cafe | #92400E | #B45309 | #F8FAFC | #FEF3C7 | #78350F | #FDE68A | Warm brown + cream |
+| 67 | Coffee Shop | #78350F | #92400E | #FBBF24 | #FEF3C7 | #451A03 | #FDE68A | Coffee brown + gold |
+| 68 | Brewery/Winery | #7C2D12 | #B91C1C | #CA8A04 | #FEF2F2 | #450A0A | #FECACA | Burgundy + craft gold |
+| 69 | Airline | #1E3A8A | #3B82F6 | #F97316 | #EFF6FF | #1E40AF | #BFDBFE | Sky blue + booking orange |
+| 70 | News/Media | #DC2626 | #EF4444 | #1E40AF | #FEF2F2 | #450A0A | #FECACA | Breaking red + link blue |
+| 71 | Magazine/Blog | #18181B | #3F3F46 | #EC4899 | #FAFAFA | #09090B | #E4E4E7 | Editorial black + pink |
+| 72 | Freelancer | #6366F1 | #818CF8 | #22C55E | #EEF2FF | #312E81 | #C7D2FE | Indigo + hire green |
+| 73 | Consulting Firm | #0F172A | #334155 | #CA8A04 | #F8FAFC | #020617 | #E2E8F0 | Navy + premium gold |
+| 74 | Marketing Agency | #EC4899 | #F472B6 | #06B6D4 | #FDF2F8 | #831843 | #FBCFE8 | Pink + creative cyan |
+| 75 | Event Management | #7C3AED | #A78BFA | #F97316 | #FAF5FF | #4C1D95 | #DDD6FE | Purple + action orange |
+| 76 | Conference/Webinar | #1E40AF | #3B82F6 | #22C55E | #EFF6FF | #1E3A8A | #BFDBFE | Blue + join green |
+| 77 | Membership/Community | #7C3AED | #A78BFA | #22C55E | #FAF5FF | #4C1D95 | #DDD6FE | Purple + join green |
+| 78 | Newsletter | #0369A1 | #0EA5E9 | #F97316 | #F0F9FF | #0C4A6E | #BAE6FD | Blue + subscribe orange |
+| 79 | Digital Products | #6366F1 | #818CF8 | #22C55E | #EEF2FF | #312E81 | #C7D2FE | Indigo + buy green |
+| 80 | Church/Religious | #7C3AED | #A78BFA | #CA8A04 | #FAF5FF | #4C1D95 | #DDD6FE | Purple + warm gold |
+| 81 | Sports Team | #DC2626 | #EF4444 | #FBBF24 | #FEF2F2 | #7F1D1D | #FECACA | Red + championship gold |
+| 82 | Museum/Gallery | #18181B | #27272A | #F8FAFC | #FAFAFA | #09090B | #E4E4E7 | Black + white space |
+| 83 | Theater/Cinema | #1E1B4B | #312E81 | #CA8A04 | #0F0F23 | #F8FAFC | #4338CA | Dark + spotlight gold |
+| 84 | Language Learning | #4F46E5 | #818CF8 | #22C55E | #EEF2FF | #312E81 | #C7D2FE | Indigo + progress green |
+| 85 | Coding Bootcamp | #0F172A | #1E293B | #22C55E | #020617 | #F8FAFC | #334155 | Terminal dark + green |
+| 86 | Cybersecurity | #00FF41 | #0D0D0D | #FF3333 | #000000 | #E0E0E0 | #1F1F1F | Matrix green + alert red |
+| 87 | Developer Tool/IDE | #1E293B | #334155 | #22C55E | #0F172A | #F8FAFC | #475569 | Code dark + run green |
+| 88 | Biotech/Life Sci | #0EA5E9 | #0284C7 | #10B981 | #F0F9FF | #0C4A6E | #BAE6FD | DNA blue + life green |
+| 89 | Space Tech | #F8FAFC | #94A3B8 | #3B82F6 | #0B0B10 | #F8FAFC | #1E293B | Star white + launch blue |
+| 90 | Architecture/Interior | #171717 | #404040 | #D4AF37 | #FFFFFF | #171717 | #E5E5E5 | Minimal black + gold |
+| 91 | Quantum Computing | #00FFFF | #7B61FF | #FF00FF | #050510 | #E0E0FF | #333344 | Cyan + interference purple |
+| 92 | Biohacking | #FF4D4D | #4D94FF | #00E676 | #F5F5F7 | #1C1C1E | #E5E5EA | Bio red/blue + vitality green |
+| 93 | Autonomous Systems | #00FF41 | #008F11 | #FF3333 | #0D1117 | #E6EDF3 | #30363D | Terminal green + alert red |
+| 94 | Generative AI Art | #18181B | #3F3F46 | #EC4899 | #FAFAFA | #09090B | #E4E4E7 | Neutral + creative pink |
+| 95 | Spatial/VisionOS | #FFFFFF | #E5E5E5 | #007AFF | #888888 | #000000 | #CCCCCC | Glass white + system blue |
+| 96 | Climate Tech | #059669 | #10B981 | #FBBF24 | #ECFDF5 | #064E3B | #A7F3D0 | Nature green + solar gold |
+
+## Knowledge Base: Font Pairings (57 Combinations)
+
+Cross-reference extracted font-family values against these pairings to identify typography style and suggest improvements.
+
+**Matching logic:** Extract `font-family` from headings and body text. Match against Heading Font + Body Font columns. Partial match (one font) = suggest the complementary pair.
+
+| # | Pairing Name | Cat | Heading | Body | Mood | Best For |
+|---|---|---|---|---|---|---|
+| 1 | Classic Elegant | Serif+Sans | Playfair Display | Inter | elegant, luxury, premium | Luxury, fashion, editorial |
+| 2 | Modern Professional | Sans+Sans | Poppins | Open Sans | modern, corporate, friendly | SaaS, corporate, startups |
+| 3 | Tech Startup | Sans+Sans | Space Grotesk | DM Sans | tech, innovative, bold | Tech, SaaS, AI products |
+| 4 | Editorial Classic | Serif+Serif | Cormorant Garamond | Libre Baskerville | editorial, literary, refined | Publishing, blogs, news |
+| 5 | Minimal Swiss | Sans+Sans | Inter | Inter | minimal, functional, neutral | Dashboards, admin, design systems |
+| 6 | Playful Creative | Display+Sans | Fredoka | Nunito | playful, fun, warm | Children's apps, education, gaming |
+| 7 | Bold Statement | Display+Sans | Bebas Neue | Source Sans 3 | bold, dramatic, impactful | Marketing, portfolios, sports |
+| 8 | Wellness Calm | Serif+Sans | Lora | Raleway | calm, natural, organic | Health, wellness, spa, yoga |
+| 9 | Developer Mono | Mono+Sans | JetBrains Mono | IBM Plex Sans | code, technical, precise | Dev tools, docs, tech blogs |
+| 10 | Retro Vintage | Display+Serif | Abril Fatface | Merriweather | retro, nostalgic, dramatic | Vintage brands, breweries, posters |
+| 11 | Geometric Modern | Sans+Sans | Outfit | Work Sans | geometric, contemporary | Portfolios, agencies, landing pages |
+| 12 | Luxury Serif | Serif+Sans | Cormorant | Montserrat | luxury, fashion, refined | Fashion, jewelry, high-end |
+| 13 | Friendly SaaS | Sans+Sans | Plus Jakarta Sans | Plus Jakarta Sans | friendly, modern, clean | SaaS, web apps, dashboards |
+| 14 | News Editorial | Serif+Sans | Newsreader | Roboto | news, trustworthy, readable | News, magazines, journalism |
+| 15 | Handwritten Charm | Script+Sans | Caveat | Quicksand | handwritten, casual, warm | Personal blogs, invitations |
+| 16 | Corporate Trust | Sans+Sans | Lexend | Source Sans 3 | corporate, accessible | Enterprise, government, healthcare |
+| 17 | Brutalist Raw | Mono+Mono | Space Mono | Space Mono | brutalist, raw, stark | Brutalist design, dev portfolios |
+| 18 | Fashion Forward | Sans+Sans | Syne | Manrope | avant-garde, artistic, edgy | Fashion, creative agencies, art |
+| 19 | Soft Rounded | Sans+Sans | Varela Round | Nunito Sans | soft, friendly, gentle | Children's, pet apps, soft UI |
+| 20 | Premium Sans | Sans+Sans | Satoshi | General Sans | premium, sophisticated | Premium brands, modern agencies |
+| 21 | Vietnamese | Sans+Sans | Be Vietnam Pro | Noto Sans | multilingual, readable | Vietnamese sites, intl products |
+| 22 | Japanese Elegant | Serif+Sans | Noto Serif JP | Noto Sans JP | japanese, elegant | Japanese sites, cultural content |
+| 23 | Korean Modern | Sans+Sans | Noto Sans KR | Noto Sans KR | korean, modern, clean | Korean sites, K-beauty, K-pop |
+| 24 | Chinese Traditional | Serif+Sans | Noto Serif TC | Noto Sans TC | chinese, elegant | Traditional Chinese, Taiwan/HK |
+| 25 | Chinese Simplified | Sans+Sans | Noto Sans SC | Noto Sans SC | chinese, modern | Mainland China, business apps |
+| 26 | Arabic Elegant | Serif+Sans | Noto Naskh Arabic | Noto Sans Arabic | arabic, RTL | Arabic sites, Middle East |
+| 27 | Thai Modern | Sans+Sans | Noto Sans Thai | Noto Sans Thai | thai, readable | Thai sites, SE Asia, tourism |
+| 28 | Hebrew Modern | Sans+Sans | Noto Sans Hebrew | Noto Sans Hebrew | hebrew, RTL | Hebrew sites, Israeli market |
+| 29 | Legal Professional | Serif+Sans | EB Garamond | Lato | legal, authoritative | Law firms, contracts, government |
+| 30 | Medical Clean | Sans+Sans | Figtree | Noto Sans | medical, accessible | Healthcare, pharma, health apps |
+| 31 | Financial Trust | Sans+Sans | IBM Plex Sans | IBM Plex Sans | financial, corporate | Banks, finance, insurance, fintech |
+| 32 | Real Estate Luxury | Serif+Sans | Cinzel | Josefin Sans | real estate, elegant | Luxury properties, architecture |
+| 33 | Restaurant Menu | Serif+Sans | Playfair Display SC | Karla | culinary, elegant | Restaurants, cafes, food blogs |
+| 34 | Art Deco | Display+Sans | Poiret One | Didact Gothic | art deco, 1920s, gatsby | Vintage events, luxury hotels |
+| 35 | Magazine Style | Serif+Sans | Libre Bodoni | Public Sans | magazine, editorial | Magazines, publications, journalism |
+| 36 | Crypto/Web3 | Sans+Sans | Orbitron | Exo 2 | crypto, futuristic, blockchain | Crypto, NFT, web3, blockchain |
+| 37 | Gaming Bold | Display+Sans | Russo One | Chakra Petch | gaming, action, esports | Gaming, esports, competition |
+| 38 | Indie/Craft | Display+Sans | Amatic SC | Cabin | indie, handmade, artisan | Craft brands, artisan, organic |
+| 39 | Startup Bold | Sans+Sans | Clash Display | Satoshi | startup, bold, confident | Startups, pitch decks, launches |
+| 40 | E-commerce Clean | Sans+Sans | Rubik | Nunito Sans | ecommerce, clean, retail | Online stores, product pages |
+| 41 | Academic/Research | Serif+Sans | Crimson Pro | Atkinson Hyperlegible | academic, scholarly | Universities, research, journals |
+| 42 | Dashboard Data | Mono+Sans | Fira Code | Fira Sans | dashboard, analytics | Dashboards, data viz, admin |
+| 43 | Music/Entertainment | Display+Sans | Righteous | Poppins | music, energetic, bold | Music, entertainment, festivals |
+| 44 | Minimalist Portfolio | Sans+Sans | Space Grotesk | Archivo | minimal, designer, artistic | Design portfolios, creative pros |
+| 45 | Kids/Education | Display+Sans | Baloo 2 | Comic Neue | kids, playful, colorful | Children's apps, educational games |
+| 46 | Wedding/Romance | Script+Serif | Great Vibes | Cormorant Infant | wedding, romantic, script | Wedding sites, invitations, bridal |
+| 47 | Science/Tech | Sans+Mono | Exo | Roboto Mono | science, research, data | Science, research, tech docs |
+| 48 | Accessibility First | Sans+Sans | Atkinson Hyperlegible | Atkinson Hyperlegible | accessible, WCAG, inclusive | Government, healthcare, inclusive |
+| 49 | Sports/Fitness | Sans+Sans | Barlow Condensed | Barlow | sports, athletic, energetic | Sports, fitness, gyms, competition |
+| 50 | Luxury Minimalist | Serif+Sans | Bodoni Moda | Jost | luxury, minimalist, refined | High-end fashion, premium products |
+| 51 | Tech/HUD Mono | Mono+Mono | Share Tech Mono | Fira Code | tech, sci-fi, HUD | Sci-fi interfaces, cybersecurity |
+| 52 | Pixel Retro | Display+Sans | Press Start 2P | VT323 | pixel, retro, 8-bit, arcade | Pixel art games, retro websites |
+| 53 | Neubrutalist Bold | Display+Sans | Lexend Mega | Public Sans | neubrutalist, loud, bold | Neubrutalist, Gen Z brands |
+| 54 | Academic/Archival | Serif+Serif | EB Garamond | Crimson Text | academic, traditional | University, archives, research |
+| 55 | Spatial Clear | Sans+Sans | Inter | Inter | spatial, glass, system | Spatial computing, AR/VR, glass UI |
+| 56 | Kinetic Motion | Display+Mono | Syncopate | Space Mono | kinetic, speed, futuristic | Music festivals, automotive |
+| 57 | Gen Z Brutal | Display+Sans | Anton | Epilogue | brutal, loud, meme | Gen Z marketing, streetwear |
+
+## Knowledge Base: UX Quick Check (High Severity)
+
+Post-extraction validation checklist. After extracting tokens, verify the site against these critical UX guidelines. Items marked HIGH severity = must fix.
+
+**Usage:** Run extracted CSS/HTML tokens through each check. Flag violations with severity and recommended fix.
+
+### Navigation
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Smooth Scroll | `scroll-behavior: smooth` on html | Jump without transition | `html { scroll-behavior: smooth }` | `<a href='#section'>` no CSS |
+| Back Button | Preserve navigation history | Break browser back | `history.pushState()` | `location.replace()` |
+
+### Animation
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Excessive Motion | Animate 1-2 key elements max | Animate everything | Single hero animation | `animate-bounce` on 5+ elements |
+| Reduced Motion | Check `prefers-reduced-motion` | Ignore motion settings | `@media (prefers-reduced-motion: reduce)` | No motion query |
+| Loading States | Skeleton screens or spinners | Frozen UI, no feedback | `animate-pulse` skeleton | Blank screen while loading |
+| Hover vs Tap | Use click/tap for primary actions | Rely only on hover | `onClick` handler | `onMouseEnter` only |
+
+### Layout
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Z-Index Management | Define scale system (10,20,30,50) | Arbitrary large values | `z-10 z-20 z-50` | `z-[9999]` |
+| Content Jumping | Reserve space for async content | Let content push layout | `aspect-ratio` or fixed height | No dimensions on images |
+
+### Touch
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Touch Target Size | Minimum 44x44px targets | Tiny clickable areas | `min-h-[44px] min-w-[44px]` | `w-6 h-6` buttons |
+
+### Interaction
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Focus States | Visible focus rings | Remove outline without replacement | `focus:ring-2 focus:ring-blue-500` | `outline-none` only |
+| Loading Buttons | Disable + show loading state | Allow multiple clicks | `disabled={loading}` + spinner | Button clickable while loading |
+| Error Feedback | Clear error messages near problem | Silent failures | Red border + error message | No indication |
+| Confirmation Dialogs | Confirm before destructive actions | Delete without confirmation | "Are you sure?" modal | Direct delete on click |
+
+### Accessibility
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Color Contrast | Min 4.5:1 ratio for text | Low contrast text | `#333` on white (7:1) | `#999` on white (2.8:1) |
+| Color Only | Use icons/text + color | Color-only information | Red text + error icon | Red border only |
+| Alt Text | Descriptive alt for images | Empty/missing alt | `alt='Dog playing in park'` | `alt=''` for content |
+| ARIA Labels | `aria-label` for icon buttons | Icon buttons without labels | `aria-label='Close menu'` | `<button><Icon/></button>` |
+| Keyboard Nav | Tab order matches visual order | Keyboard traps | `tabIndex` for custom order | Unreachable elements |
+| Form Labels | `<label>` with `for` attribute | Placeholder-only inputs | `<label for='email'>` | `placeholder='Email'` only |
+| Error Messages | `aria-live` or `role=alert` | Visual-only errors | `role='alert'` | Red border only |
+| Motion Sensitivity | Respect `prefers-reduced-motion` | Force scroll effects | `@media (prefers-reduced-motion)` | `ScrollTrigger.create()` |
+
+### Performance
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Image Optimization | Appropriate size + WebP | Unoptimized full-size | `srcset` with multiple sizes | 4000px for 400px display |
+
+### Forms
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Input Labels | Visible label above/beside input | Placeholder as only label | `<label>Email</label><input>` | `placeholder='Email'` only |
+| Submit Feedback | Loading then success/error state | No feedback after submit | Loading -> Success message | No response on click |
+
+### Responsive
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Touch Friendly | Increase targets on mobile | Same tiny buttons | Larger buttons on mobile | Desktop-sized on mobile |
+| Readable Font Size | Min 16px body on mobile | Tiny text | `text-base` or larger | `text-xs` for body |
+| Viewport Meta | `width=device-width, initial-scale=1` | Missing viewport | `<meta name='viewport'...>` | No viewport tag |
+| Horizontal Scroll | Content fits viewport width | Content wider than viewport | `max-w-full overflow-x-hidden` | Horizontal scrollbar |
+
+### Typography
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Contrast Readability | Darker text on light bg | Gray on gray | `text-gray-900` on white | `text-gray-400` on `gray-100` |
+
+### Feedback
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Loading Indicators | Spinner/skeleton for >300ms waits | No feedback | Skeleton or spinner | Frozen UI |
+
+### AI Interaction
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| AI Disclaimer | Clearly label AI content | Present AI as human | "AI Assistant" label | Fake human name |
+
+### Spatial UI
+| Issue | Do | Don't | Good Example | Bad Example |
+|---|---|---|---|---|
+| Gaze Hover | Scale/highlight on look | Static until pinch | `hoverEffect()` | `onTap` only |
