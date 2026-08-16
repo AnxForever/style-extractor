@@ -9,6 +9,7 @@ import { createHeuristicProvider } from "./agent/heuristic.js";
 import { createTracer, summarizeTrace } from "./agent/trace.js";
 import { scoreProposal, type AgentWorkspace } from "./agent/tools.js";
 import { toDtcgDocument, validateDtcg, serializeDtcg, DTCG_VERSION } from "./export/dtcg.js";
+import { judgeProposal } from "./eval/judgement.js";
 
 /**
  * End-to-end: measure a page, then let the agent turn those measurements into
@@ -151,9 +152,27 @@ async function main(): Promise<void> {
   // way out so a malformed document is reported here rather than discovered by
   // whichever tool consumes it later.
   if (result.bestProposal) {
+    const judgement = judgeProposal(harness.extraction, result.bestProposal);
+    process.stdout.write("\njudgement (graded against the page's own declarations):\n");
+    if (judgement.score === null) {
+      process.stdout.write("  not applicable -- this page declares no semantic colour variables\n");
+    } else {
+      process.stdout.write(`  score ${judgement.score} over ${judgement.applicable} applicable dimensions\n`);
+    }
+    for (const [label, dimension] of [
+      ["structure", judgement.structureRecovery],
+      ["pairing", judgement.pairingRecovery],
+      ["vocabulary", judgement.vocabularyAlignment],
+      ["noise", judgement.noiseRejection],
+    ] as const) {
+      const value = dimension.value === null ? "n/a" : dimension.value.toFixed(3);
+      process.stdout.write(`    ${label.padEnd(11)} ${value.padStart(5)}  ${dimension.detail}\n`);
+    }
+
     const document = toDtcgDocument(result.bestProposal, { source: url });
     const issues = validateDtcg(document);
     await writeFile(join(outDir, "tokens.tokens.json"), serializeDtcg(document), "utf8");
+    await writeFile(join(outDir, "judgement.json"), JSON.stringify(judgement, null, 2), "utf8");
 
     const errors = issues.filter((issue) => issue.severity === "error");
     const warnings = issues.filter((issue) => issue.severity === "warning");

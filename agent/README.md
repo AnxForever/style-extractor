@@ -231,17 +231,72 @@ that a computed value cannot; choosing which six of sixteen observed colours
 deserve to exist as tokens at all; knowing when near-duplicates should collapse.
 Rules handle none of this well, and none of it is currently measured.
 
-The honest reading is that **for the task as currently defined and scored, the
-model is not needed.** That result is kept here rather than engineered away.
-Adjusting the metric until the model looks necessary would invert the point of
-having a metric, and the next person to trust these numbers would be trusting
-something that had been fitted to a conclusion.
+The honest reading is that **for the task as scored at that point, the model
+was not needed.** The result is kept here rather than engineered away.
+Adjusting a metric until the model looks necessary would invert the purpose of
+having a metric.
 
-What it does establish is the shape of the real question. A benchmark that
-separates a model from a lookup table has to withhold the answer, not print it
-in the survey, and has to score the decisions that have no mechanical form. The
-harness, the loop, the budgets and the trace are all reusable once that
-benchmark exists; the scorer is the part that needs rebuilding.
+## Rebuilding the scorer around judgement
+
+The fix was not to weaken the heuristic but to measure something it cannot do.
+
+Designers already publish their intent, in the custom properties their pages
+declare. A site that ships
+
+```css
+--sk-fg-1 .. --sk-fg-4     --sk-bg-1 .. --sk-bg-4     --sk-fg-accent
+```
+
+has stated that those colours form two families of elevation steps plus an
+accent. That structure is absent from computed styles -- the extractor sees
+eight unrelated values -- and recovering it from the values alone is precisely
+the judgement in question. Using the declarations as the reference makes the
+target objective without making it mechanical, and avoids both bad
+alternatives: hand annotation is subjective and does not scale, while an LLM
+grader reintroduces the bias and calibration burden that keeping the scorer
+deterministic was meant to avoid.
+
+Four dimensions, each graded against what the page itself declares:
+
+| dimension | question | why rules struggle |
+|---|---|---|
+| structure recovery | were the author's colour families reconstructed? | grouping is invisible in the values |
+| pairing recovery | do surface and its text colour stay together? | the relation is semantic, not numeric |
+| vocabulary alignment | does it reuse the author's words? | requires telling `--sk-bg-2` from `--tw-ring-color` |
+| noise rejection | were widget colours kept out of the design? | third-party values look like any other |
+
+Scored with pairwise F1 over the grouping, the standard clustering comparison.
+Plain agreement would flatter a proposal that groups nothing, since most colour
+pairs belong to different families anyway.
+
+**The same heuristic, the same output, both scorers:**
+
+```
+                   value scorer      judgement scorer
+svelte.dev             0.997              0.357
+ui.shadcn.com          0.995              0.397
+```
+
+The failures are specific enough to act on. On `svelte.dev` the heuristic
+scores 0.143 on vocabulary because it invented `surface` and `muted` where the
+author had said `fg` and `bg`. On `ui.shadcn.com` it scores 0.000 on pairing:
+it never recognised that `--card` and `--card-foreground` describe one surface
+and the text that belongs on it.
+
+Two rules keep the benchmark honest:
+
+- **Not applicable is not zero.** Tailwind-compiled pages inline their
+  variables and declare nothing semantic. Scoring zero there would measure the
+  page's build tooling rather than the proposal, so every dimension reports
+  `null` when the page offers no reference for it.
+- **Undecidable cases are skipped, not guessed.** shadcn declares
+  `--background`, `--card` and `--popover` all as `#fff`. Since proposals are
+  matched to declarations by colour, those three are indistinguishable from the
+  outside, and any grouping verdict about them would be an artefact of which
+  one the matcher happened to pick.
+
+The model now has somewhere to go: 0.36 to 1.0, on dimensions where rules
+plateau.
 
 ## Layout
 
@@ -256,12 +311,19 @@ src/eval/
   accuracy.ts    L2
   usability.ts   L3
   fingerprint.ts L4
+  author-intent.ts  recovers declared families, pairs and vocabulary from CSS variables
+  judgement.ts   scores organisation against that declared intent
   golden-set.ts  18 sites tagged by the difficulty each one probes
 src/agent/
   provider.ts    model interface, Anthropic and deterministic mock
+  heuristic.ts   rule-based agent, the baseline a model has to beat
   tools.ts       six tools plus the deterministic proposal scorer
   loop.ts        plan/act/observe/correct with budgets and best-so-far
   trace.ts       append-only JSONL execution trace
+src/export/
+  dtcg.ts        W3C DTCG 2025.10 conversion and validation
+src/harness/
+  retry.ts       diagnosed-cause retry variants
 src/cli.ts       batch runner
 src/run-agent.ts measure a page, then run the agent over the measurements
 src/report.ts    markdown report generation
@@ -280,8 +342,9 @@ pnpm exec tsx src/cli.ts --golden --preset style --truth --out runs/baseline
 pnpm exec tsx src/report.ts runs/baseline
 
 # measure a page and run the agent over it
-pnpm exec tsx src/run-agent.ts --url https://example.com          # live model
-pnpm exec tsx src/run-agent.ts --url https://example.com --mock   # no network
+pnpm exec tsx src/run-agent.ts --url https://example.com              # live model
+pnpm exec tsx src/run-agent.ts --url https://example.com --heuristic  # rules baseline
+pnpm exec tsx src/run-agent.ts --url https://example.com --mock       # no network
 
 node --import tsx --test 'src/**/*.test.ts'
 ```
@@ -291,6 +354,13 @@ Model access is read from `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` plus
 
 ## Known limits
 
+- The judgement scorer needs the page to declare semantic custom properties.
+  Sites that compile them away (Tailwind, most CSS-in-JS) report no applicable
+  dimensions, so the benchmark covers a subset of the golden set rather than
+  all of it.
+- Colours reused across roles are excluded from grouping and pairing scores.
+  On `ui.shadcn.com` that is 21 of the declared colours, which is a large share
+  of the reference.
 - L4 currently characterises colour distribution only. Typography scale and
   spacing rhythm contribute to perceived similarity and are not yet scored.
 - Palette precision is measured against colours painted in the sampled
@@ -299,4 +369,6 @@ Model access is read from `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` plus
 - The greedy transport in `paletteEmd` is an approximation. It is monotone,
   which is sufficient for ranking, but it is not the LP optimum. The 1-D
   histogram EMD used by L4 is exact.
-- One golden-set site is behind a bot wall and cannot be scored.
+- One golden-set site is behind a bot wall and cannot be scored; every retry
+  variant was tried against it and refused.
+- No live-model numbers exist yet, for the network reason described above.
