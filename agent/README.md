@@ -298,6 +298,73 @@ Two rules keep the benchmark honest:
 The model now has somewhere to go: 0.36 to 1.0, on dimensions where rules
 plateau.
 
+## Inverting the benchmark
+
+Grading against a page's own declarations works, but it inherits whatever the
+page happened to declare. Tailwind-compiled sites declare nothing. shadcn reuses
+`#fff` across three roles, so 21 of its declarations are undecidable. And the
+sample is however many suitable sites exist.
+
+The fix is to reverse the direction: rather than extracting ground truth from a
+page, generate a page from ground truth. RIKER calls this paradigm inversion and
+uses it for retrieval corpora; the same move applies to design, where nobody
+appears to have tried it -- the UI benchmarks in this area (CANVAS, WebMMU,
+WebCode2M) all run screenshot-to-code, and the design-token extractors that
+exist ship no benchmark at all.
+
+A seeded generator produces a design system, which is then rendered into a real,
+loadable page with a nav, hero, cards, a swatch strip and a spec table. Colours
+are forced at least 6 deltaE apart, so nothing is ambiguous by construction.
+Same seed, same system, every time.
+
+### Difficulty is a parameter, not an accident
+
+Each level withholds one class of clue:
+
+| level | what the page ships | what recovery requires |
+|---|---|---|
+| `declared` | `--surface-1`, `--text-2` | reading the names |
+| `opaque` | `--v1k3n9`, `--v8fa2` | ignoring names, grouping by value |
+| `inlined` | no custom properties at all | inferring structure from the rendering |
+| `noisy` | inlined, plus widget variables and off-system decoration | separating design from incident |
+
+### The curve diagnoses the system, not just its score
+
+Running the rule-based agent across four seeds:
+
+```
+| difficulty | score | structure | coverage | precision | role  | order |
+| declared   | 0.736 | 0.444     | 0.636    | 1.000     | 1.000 | 0.750 |
+| opaque     | 0.736 | 0.444     | 0.636    | 1.000     | 1.000 | 0.750 |
+| inlined    | 0.736 | 0.444     | 0.636    | 1.000     | 1.000 | 0.750 |
+| noisy      | 0.688 | 0.480     | 0.523    | 0.821     | 1.000 | 0.750 |
+```
+
+The first three are identical to three decimal places. That is the finding: the
+heuristic never reads a custom property, so withholding them costs it nothing.
+Only `noisy` moves the number, because decorative colours are genuinely painted
+and shift the area ranking it depends on.
+
+Two numbers make that legible. **Peak** is the score with every clue available;
+**robustness** is `inlined / declared`, how much survives once names are gone.
+
+| peak | robustness | reading |
+|---|---|---|
+| low | high | clue-blind: the names were never being read |
+| high | low | reads names, cannot infer structure without them |
+| high | high | recovers design, not just labels |
+
+The heuristic lands at peak 0.736, robustness 1.000 -- the first row. **A
+robustness of 1.0 is not evidence of strength; here it means the information
+was never used.** A single aggregate score would have shown none of this.
+
+One caveat worth recording: the first version of this curve showed `opaque`
+scoring well below `inlined`, which looked like a meaningful result about
+obfuscated naming. It was a bug -- obfuscated names were truncated to four hash
+characters, collided, and silently dropped colours from the page. The
+difficulty level was measuring the renderer. A test now asserts that every
+level declares every colour exactly once.
+
 ## Layout
 
 ```
@@ -322,10 +389,15 @@ src/agent/
   trace.ts       append-only JSONL execution trace
 src/export/
   dtcg.ts        W3C DTCG 2025.10 conversion and validation
+src/synth/
+  system.ts      seeded design-system generator, colours forced distinct
+  page.ts        renders a system into a real page at four difficulty levels
+  score.ts       grades recovery against the generated system
 src/harness/
   retry.ts       diagnosed-cause retry variants
 src/cli.ts       batch runner
 src/run-agent.ts measure a page, then run the agent over the measurements
+src/synth-bench.ts  sweep seeds x difficulty, emit the curve and diagnosis
 src/report.ts    markdown report generation
 ```
 
@@ -349,18 +421,30 @@ pnpm exec tsx src/run-agent.ts --url https://example.com --mock       # no netwo
 node --import tsx --test 'src/**/*.test.ts'
 ```
 
+The synthetic benchmark needs no network at all:
+
+```bash
+# sweep seeds against every difficulty level, print the curve and diagnosis
+pnpm exec tsx src/synth-bench.ts --seeds 1,2,3,4 --difficulty all --heuristic
+pnpm exec tsx src/synth-bench.ts --seeds 1,2,3,4 --difficulty all   # live model
+```
+
 Model access is read from `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` plus
 `ANTHROPIC_BASE_URL`. Override the model with `STYLE_AGENT_MODEL` or `--model`.
 
 ## Known limits
 
+- The synthetic generator produces systems with clean, regular structure.
+  Real design systems drift, contradict themselves and carry legacy values, so
+  a high synthetic score is a necessary condition for competence rather than a
+  sufficient one. That is why the real-site benchmark is kept alongside it
+  rather than replaced by it.
 - The judgement scorer needs the page to declare semantic custom properties.
   Sites that compile them away (Tailwind, most CSS-in-JS) report no applicable
-  dimensions, so the benchmark covers a subset of the golden set rather than
-  all of it.
+  dimensions, so the real-site benchmark covers a subset of the golden set.
 - Colours reused across roles are excluded from grouping and pairing scores.
-  On `ui.shadcn.com` that is 21 of the declared colours, which is a large share
-  of the reference.
+  On `ui.shadcn.com` that is 21 of the declared colours, a large share of the
+  reference.
 - L4 currently characterises colour distribution only. Typography scale and
   spacing rhythm contribute to perceived similarity and are not yet scored.
 - Palette precision is measured against colours painted in the sampled
