@@ -126,6 +126,79 @@ any-of-three check passes on an unhydrated SPA shell, and every downstream
 metric then measures an empty page while reporting success. A readiness timeout
 is a more useful outcome than a confident measurement of nothing.
 
+## The agent
+
+The extraction engine already finds every value on the page. What it cannot do
+is decide which of those values constitute a design decision, or what to call
+them -- computed styles carry values, never intent. That judgement is the only
+thing the model is asked for; all measurement stays in code.
+
+The gap is quantifiable. Scoring the raw extraction of `tailwindcss.com` as if
+it had been proposed verbatim:
+
+```
+coverage 0.917   reality 0.940   convergence 1.00   ->  values are right
+roleAccuracy 0   semanticNaming 0                   ->  and it is not a design system
+combined: 0.521
+```
+
+92% of the colours that matter are present and 94% of what is reported is
+genuinely painted, yet the result scores 0.52 because nothing identifies which
+colour is the page surface, which is body text, or what any of them are for.
+
+### Loop
+
+```
+plan -> call tools -> observe -> score against measurements -> revise
+```
+
+Six tools, bounded by the agent's decisions rather than by the engine's 23
+internal modules: `survey`, `list_colors`, `list_variables`, `check_color`,
+`propose_tokens`, `score_proposal`. Exposing one tool per module would force
+the model to reason about whether to call `motion-assoc` or `motion-enhanced`,
+which is not a question it should be spending tokens on.
+
+`score_proposal` is what closes the loop, and it is deterministic. A second
+model grading the first would import position bias, length bias and
+self-preference into the one component that has to stay trustworthy, and would
+need calibration against human labels before its numbers meant anything. Here
+the grader is the same measurement code the harness uses, and its feedback is
+phrased as specific deltas -- *"Missing #030712, which paints 34.1% of the
+page"* -- because a bare score gives the agent nothing to act on.
+
+### Properties the loop guarantees
+
+- **Turn and token caps.** A model that keeps requesting tools cannot spin
+  indefinitely.
+- **Tool faults are fed back, not thrown.** A malformed argument is something
+  the agent can correct next turn; crashing turns a recoverable mistake into a
+  failed run.
+- **Best-so-far is retained.** Agent trajectories are not monotone; a later
+  revision can be worse, and returning the final state would silently discard a
+  better earlier answer.
+- **Context is compacted, not truncated.** Tool output dominates growth in a
+  loop like this and stale output is largely redundant. Recent turns stay
+  verbatim; older tool results are elided. Truncating the conversation instead
+  would drop the task framing, which is the one thing that must survive.
+- **Provider is an interface.** Agent logic is the part worth testing and it
+  must be testable without a network or a billing account. A deterministic mock
+  provider replays scripted turns, which is how every property above is
+  verified in CI.
+
+### Verification status
+
+The loop is covered by 10 tests against the mock provider, including two that
+check the scoring function has a usable gradient: identical colour values score
+more than 0.3 higher when named by role instead of by index, and acting on the
+feedback from a weak proposal reaches a good score. A metric that only punishes
+would leave nothing to climb.
+
+**The loop has not yet been run against a live model.** This environment routes
+Anthropic traffic through a proxy whose edge WAF returns
+`403 Denied by http_auto_ratelimit` before requests reach the API, for both
+`Authorization: Bearer` and `x-api-key`. The credential is valid; the network
+path is not. Real-model numbers are therefore absent rather than estimated.
+
 ## Layout
 
 ```
@@ -140,7 +213,13 @@ src/eval/
   usability.ts   L3
   fingerprint.ts L4
   golden-set.ts  18 sites tagged by the difficulty each one probes
+src/agent/
+  provider.ts    model interface, Anthropic and deterministic mock
+  tools.ts       six tools plus the deterministic proposal scorer
+  loop.ts        plan/act/observe/correct with budgets and best-so-far
+  trace.ts       append-only JSONL execution trace
 src/cli.ts       batch runner
+src/run-agent.ts measure a page, then run the agent over the measurements
 src/report.ts    markdown report generation
 ```
 
@@ -148,11 +227,23 @@ src/report.ts    markdown report generation
 
 ```bash
 pnpm install
+
+# measure one page, with ground truth and L2/L4 scoring
 pnpm exec tsx src/cli.ts --url https://example.com --preset style --truth
+
+# full golden-set baseline, then the report
 pnpm exec tsx src/cli.ts --golden --preset style --truth --out runs/baseline
 pnpm exec tsx src/report.ts runs/baseline
+
+# measure a page and run the agent over it
+pnpm exec tsx src/run-agent.ts --url https://example.com          # live model
+pnpm exec tsx src/run-agent.ts --url https://example.com --mock   # no network
+
 node --import tsx --test 'src/**/*.test.ts'
 ```
+
+Model access is read from `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` plus
+`ANTHROPIC_BASE_URL`. Override the model with `STYLE_AGENT_MODEL` or `--model`.
 
 ## Known limits
 

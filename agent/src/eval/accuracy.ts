@@ -64,6 +64,11 @@ export interface AccuracyReport {
   };
   readonly themeSwitching: ThemeVerdict;
   /**
+   * Extracted colours resolved to RGB, reused downstream so the agent stage
+   * does not have to reopen a browser purely to parse colour notation.
+   */
+  readonly resolvedColors: readonly Rgb[];
+  /**
    * L4: does the reconstructed palette read as the same design?
    *
    * Separate from the accuracy score on purpose. A payload can score well on
@@ -297,6 +302,7 @@ export async function scoreAccuracy(
     fontAccuracy: Number(fontAccuracy.toFixed(3)),
     fontDetail: { expected, claimed, fallbackOnly },
     themeSwitching,
+    resolvedColors: paletteClaim,
     perception,
     score,
   };

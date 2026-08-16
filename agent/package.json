@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "playwright": "1.58.2"
   },
   "devDependencies": {
