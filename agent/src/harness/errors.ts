@@ -26,6 +26,8 @@ export type FailureReason =
   | "tls_error"
   | "navigation_timeout"
   | "http_error_status"
+  /** 403/429: the server answered, but refused this client. Usually bot defence. */
+  | "access_denied"
   | "bot_challenge"
   // readiness
   | "body_empty"
@@ -48,12 +50,21 @@ export interface HarnessFailure {
   readonly retryable: boolean;
 }
 
+/**
+ * Retryable means "a *different* attempt could succeed", not "try the same
+ * thing again". Each reason listed here has a corresponding variation in
+ * retry.ts that changes the conditions; a reason with no such variation does
+ * not belong in this set, because repeating an identical request is just a
+ * slower way to fail.
+ */
 const RETRYABLE: ReadonlySet<FailureReason> = new Set<FailureReason>([
   "dns_or_connection",
   "navigation_timeout",
   "render_timeout",
   "body_empty",
   "extraction_timeout",
+  "access_denied",
+  "bot_challenge",
 ]);
 
 export function makeFailure(

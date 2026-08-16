@@ -28,6 +28,12 @@ export interface HarnessOptions {
   readonly navigationTimeoutMs?: number;
   readonly extractionTimeoutMs?: number;
   readonly headless?: boolean;
+  /** Override the browser fingerprint; used by retry variants against bot defence. */
+  readonly userAgent?: string;
+  /** Extra settle time after the readiness check, for slow client-side content. */
+  readonly settleMs?: number;
+  /** Scroll passes to trigger lazy-loaded sections before measuring. */
+  readonly scrollPasses?: number;
   /**
    * Collect ground truth and score L2 accuracy in the same page session.
    * Sampling truth from a second page load would compare the extraction
@@ -63,6 +69,12 @@ const DEFAULTS = {
   navigationTimeoutMs: 45_000,
   extractionTimeoutMs: 90_000,
   headless: true,
+  // A default Playwright UA trips more bot walls than a stock desktop one.
+  userAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  settleMs: 0,
+  scrollPasses: 0,
 } as const;
 
 /** Cache module sources across runs so a batch does not re-read 23 files per URL. */
@@ -215,10 +227,7 @@ export async function runExtraction(options: HarnessOptions): Promise<HarnessRes
     browser = await chromium.launch({ headless });
     const context = await browser.newContext({
       viewport,
-      // A default Playwright UA trips more bot walls than a stock desktop one.
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      userAgent: options.userAgent ?? DEFAULTS.userAgent,
     });
     const page = await context.newPage();
 
@@ -248,10 +257,19 @@ export async function runExtraction(options: HarnessOptions): Promise<HarnessRes
     mark("navigation", navigatedAt);
 
     if (status !== null && status >= 400) {
+      // 403 and 429 mean the server answered and refused this specific client,
+      // which is a different situation from a page that does not exist: a
+      // changed fingerprint or a slower approach can succeed where the first
+      // attempt did not.
+      const denied = status === 403 || status === 429;
       return {
         ...base,
         ok: false,
-        failure: makeFailure("navigation", "http_error_status", `HTTP ${status}`),
+        failure: makeFailure(
+          "navigation",
+          denied ? "access_denied" : "http_error_status",
+          `HTTP ${status}`,
+        ),
         timingsMs,
       };
     }
@@ -269,6 +287,24 @@ export async function runExtraction(options: HarnessOptions): Promise<HarnessRes
         timingsMs,
       };
     }
+
+    // Lazy-loaded sections below the fold never paint without a scroll, and a
+    // colour that never painted cannot be measured. Retry variants raise this
+    // when a first pass produced too little signal.
+    const scrollPasses = options.scrollPasses ?? DEFAULTS.scrollPasses;
+    for (let pass = 0; pass < scrollPasses; pass += 1) {
+      await page
+        .evaluate(() => window.scrollBy(0, window.innerHeight * 0.9))
+        .catch(() => undefined);
+      await page.waitForTimeout(500);
+    }
+    if (scrollPasses > 0) {
+      await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
+      await page.waitForTimeout(300);
+    }
+
+    const settleMs = options.settleMs ?? DEFAULTS.settleMs;
+    if (settleMs > 0) await page.waitForTimeout(settleMs);
     mark("readiness", readyAt);
 
     const title = await page.title();

@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { runExtraction, type HarnessResult } from "./harness/driver.js";
+import { type HarnessResult } from "./harness/driver.js";
+import { runResilientExtraction } from "./harness/retry.js";
 import { isExtractionPreset, type ExtractionPreset } from "./harness/scripts.js";
 import { GOLDEN_SET } from "./eval/golden-set.js";
 
@@ -11,6 +12,7 @@ interface CliArgs {
   readonly outRoot: string;
   readonly headless: boolean;
   readonly withGroundTruth: boolean;
+  readonly maxAttempts: number;
 }
 
 function slugify(url: string): string {
@@ -74,6 +76,7 @@ async function parseArgs(argv: readonly string[]): Promise<CliArgs> {
     outRoot: resolve(flags.get("out") ?? "runs"),
     headless: !bare.has("headed"),
     withGroundTruth: bare.has("truth"),
+    maxAttempts: Math.max(1, Number(flags.get("attempts") ?? 3)),
   };
 }
 
@@ -105,14 +108,24 @@ async function main(): Promise<void> {
   for (const [index, url] of args.urls.entries()) {
     process.stdout.write(`[${index + 1}/${args.urls.length}] ${url}\n`);
     const outDir = join(args.outRoot, slugify(url));
-    const result = await runExtraction({
-      url,
-      preset: args.preset,
-      outDir,
-      headless: args.headless,
-      withGroundTruth: args.withGroundTruth,
-    });
+    const { result, attempts, recovered } = await runResilientExtraction(
+      {
+        url,
+        preset: args.preset,
+        outDir,
+        headless: args.headless,
+        withGroundTruth: args.withGroundTruth,
+      },
+      args.maxAttempts,
+      (attempt, rationale) => {
+        process.stdout.write(`      retry [${attempt.variant}]: ${rationale}\n`);
+      },
+    );
     results.push(result);
+    if (attempts.length > 1) {
+      const trail = attempts.map((a) => `${a.variant}${a.ok ? "=ok" : `=${a.reason}`}`).join(" -> ");
+      process.stdout.write(`      attempts: ${trail}${recovered ? "  (recovered)" : ""}\n`);
+    }
     process.stdout.write(`      ${summarize(result)}\n`);
   }
 

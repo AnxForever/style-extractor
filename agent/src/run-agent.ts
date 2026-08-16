@@ -5,8 +5,10 @@ import { runExtraction } from "./harness/driver.js";
 import { isExtractionPreset } from "./harness/scripts.js";
 import { runAgentLoop } from "./agent/loop.js";
 import { createAnthropicProvider, createMockProvider } from "./agent/provider.js";
+import { createHeuristicProvider } from "./agent/heuristic.js";
 import { createTracer, summarizeTrace } from "./agent/trace.js";
 import { scoreProposal, type AgentWorkspace } from "./agent/tools.js";
+import { toDtcgDocument, validateDtcg, serializeDtcg, DTCG_VERSION } from "./export/dtcg.js";
 
 /**
  * End-to-end: measure a page, then let the agent turn those measurements into
@@ -91,9 +93,12 @@ async function main(): Promise<void> {
   const rawScore = scoreProposal(rawAsProposal);
 
   const useMock = bare.has("mock");
-  const provider = useMock
-    ? createMockProvider([{ text: "mock provider: no model configured" }])
-    : createAnthropicProvider({ ...(flags.get("model") ? { model: flags.get("model")! } : {}) });
+  const useHeuristic = bare.has("heuristic");
+  const provider = useHeuristic
+    ? createHeuristicProvider()
+    : useMock
+      ? createMockProvider([{ text: "mock provider: no model configured" }])
+      : createAnthropicProvider({ ...(flags.get("model") ? { model: flags.get("model")! } : {}) });
 
   const tracePath = join(outDir, "agent-trace.jsonl");
   const tracer = createTracer(tracePath);
@@ -132,15 +137,34 @@ async function main(): Promise<void> {
 
   process.stdout.write("\n");
   process.stdout.write(`raw extraction, scored as-is : ${rawScore.score.toFixed(3)} `);
-  process.stdout.write(`(coverage ${rawScore.coverage}, reality ${rawScore.reality}, convergence ${rawScore.convergence})\n`);
+  process.stdout.write(`(coverage ${rawScore.coverage}, reality ${rawScore.reality}, role ${rawScore.roleAccuracy}, naming ${rawScore.semanticNaming})\n`);
   if (result.bestScore) {
     process.stdout.write(`agent proposal               : ${result.bestScore.score.toFixed(3)} `);
     process.stdout.write(
-      `(coverage ${result.bestScore.coverage}, reality ${result.bestScore.reality}, convergence ${result.bestScore.convergence})\n`,
+      `(coverage ${result.bestScore.coverage}, reality ${result.bestScore.reality}, role ${result.bestScore.roleAccuracy}, naming ${result.bestScore.semanticNaming})\n`,
     );
   } else {
     process.stdout.write(`agent proposal               : none (${result.reason}${result.error ? `: ${result.error}` : ""})\n`);
   }
+
+  // Emit the standard format alongside the raw result. Validation runs on the
+  // way out so a malformed document is reported here rather than discovered by
+  // whichever tool consumes it later.
+  if (result.bestProposal) {
+    const document = toDtcgDocument(result.bestProposal, { source: url });
+    const issues = validateDtcg(document);
+    await writeFile(join(outDir, "tokens.tokens.json"), serializeDtcg(document), "utf8");
+
+    const errors = issues.filter((issue) => issue.severity === "error");
+    const warnings = issues.filter((issue) => issue.severity === "warning");
+    process.stdout.write(
+      `\nDTCG ${DTCG_VERSION}: ${errors.length} errors, ${warnings.length} warnings -> tokens.tokens.json\n`,
+    );
+    for (const issue of issues.slice(0, 8)) {
+      process.stdout.write(`  ${issue.severity}: ${issue.path || "(root)"} -- ${issue.message}\n`);
+    }
+  }
+
   process.stdout.write(`\nartifacts in ${outDir}\n`);
 }
 

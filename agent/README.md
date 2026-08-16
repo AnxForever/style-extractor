@@ -199,6 +199,50 @@ Anthropic traffic through a proxy whose edge WAF returns
 `Authorization: Bearer` and `x-api-key`. The credential is valid; the network
 path is not. Real-model numbers are therefore absent rather than estimated.
 
+## A negative result: rules already win
+
+Before assuming the model earns its place, the same task was implemented as
+plain rules -- largest painted colour becomes the surface, the page's reported
+foreground becomes the text token, the most chromatic remainder becomes the
+accent -- and dropped into the identical loop, graded by the identical scorer.
+
+```
+                     raw extraction    heuristic (no model, 0 tokens)
+tailwindcss.com          0.521               0.999
+linear.app               0.317               0.997
+vercel.com               0.217               1.000
+getbootstrap.com         0.338               0.988
+```
+
+The rules score essentially perfectly, which leaves a model nothing to improve.
+Two things follow, and only one of them is comfortable.
+
+**The scoring dimensions are mechanically satisfiable.** Coverage and reality
+are table lookups. Semantic naming is a regular expression. Worst of all, role
+accuracy is effectively given away: the `survey` tool reports
+`page background: #030712, text: #ffffff` directly, so identifying those roles
+requires no judgement at all. A tool that hands over the answer cannot measure
+the ability to find it.
+
+**The judgement-heavy parts are not being scored.** Deciding that `#1d202a` and
+`#10141e` are two elevation steps of one surface rather than two unrelated
+colours; recognising that a declared `--color-primary` reveals authorial intent
+that a computed value cannot; choosing which six of sixteen observed colours
+deserve to exist as tokens at all; knowing when near-duplicates should collapse.
+Rules handle none of this well, and none of it is currently measured.
+
+The honest reading is that **for the task as currently defined and scored, the
+model is not needed.** That result is kept here rather than engineered away.
+Adjusting the metric until the model looks necessary would invert the point of
+having a metric, and the next person to trust these numbers would be trusting
+something that had been fitted to a conclusion.
+
+What it does establish is the shape of the real question. A benchmark that
+separates a model from a lookup table has to withhold the answer, not print it
+in the survey, and has to score the decisions that have no mechanical form. The
+harness, the loop, the budgets and the trace are all reusable once that
+benchmark exists; the scorer is the part that needs rebuilding.
+
 ## Layout
 
 ```
